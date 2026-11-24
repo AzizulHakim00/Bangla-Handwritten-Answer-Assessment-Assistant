@@ -73,4 +73,44 @@ class AssessmentApiTest {
             .andExpect(status().isOk()).andExpect(jsonPath("$.scripts[0].status").value("Pending Moderation"))
             .andExpect(jsonPath("$.scripts[0].history[0].score").value(6));
     }
+
+    @Test void markerCannotOpenAppeal() throws Exception {
+        mvc.perform(post("/api/scripts/SCR-1/appeals").with(user("marker").roles("MARKER")).with(csrf())
+            .contentType("application/json").content("{\"version\":1,\"reason\":\"Recheck\"}"))
+            .andExpect(status().isForbidden());
+    }
+    @Test void returnRequiresReasonAndPendingSubmission() throws Exception {
+        mvc.perform(post("/api/scripts/SCR-1/return").with(user("moderator").roles("MODERATOR")).with(csrf())
+            .contentType("application/json").content("{\"version\":1,\"reason\":\"\"}"))
+            .andExpect(status().isBadRequest());
+        workspace.scripts.get(0).putAll(Map.of("status","Pending Moderation","reviewedBy","marker"));
+        mvc.perform(post("/api/scripts/SCR-1/return").with(user("moderator").roles("MODERATOR")).with(csrf())
+            .contentType("application/json").content("{\"version\":1,\"reason\":\"Check evidence\"}"))
+            .andExpect(status().isOk()).andExpect(jsonPath("$.scripts[0].status").value("In Review"))
+            .andExpect(jsonPath("$.scripts[0].history[0].action").value("Returned for correction: Check evidence"));
+    }
+    @Test void appealPreservesApprovedExportWhileDraftChanges() throws Exception {
+        workspace.scripts.get(0).putAll(Map.of("status","Approved","approvedBy","moderator","ocr","Original answer"));
+        mvc.perform(post("/api/scripts/SCR-1/appeals").with(user("teacher").roles("TEACHER")).with(csrf())
+            .contentType("application/json").content("{\"version\":1,\"reason\":\"Please recheck\"}"))
+            .andExpect(status().isOk()).andExpect(jsonPath("$.scripts[0].approvedRevisions[0].score").value(6));
+        mvc.perform(post("/api/scripts/SCR-1/review").with(user("marker").roles("MARKER")).with(csrf())
+            .contentType("application/json").content("{\"version\":1,\"score\":2,\"ocr\":\"Corrected answer\",\"remarks\":\"Revised\",\"submit\":true}"))
+            .andExpect(status().isOk());
+        mvc.perform(get("/api/exports/marks.csv").with(user("teacher").roles("TEACHER")))
+            .andExpect(content().string(org.hamcrest.Matchers.containsString(",6,7,Approved")));
+        mvc.perform(post("/api/scripts/SCR-1/approve").with(user("moderator").roles("MODERATOR")).with(csrf())
+            .contentType("application/json").content("{\"version\":1}"))
+            .andExpect(status().isOk()).andExpect(jsonPath("$.scripts[0].approvedRevisions[0].score").value(6))
+            .andExpect(jsonPath("$.scripts[0].approvedRevisions[1].score").value(2))
+            .andExpect(jsonPath("$.scripts[0].appeals[0].status").value("Resolved"));
+    }
+    @Test void cannotSubmitWhenAnotherQuestionIsUnreviewed() throws Exception {
+        var one = new LinkedHashMap<String,Object>(Map.of("question",1,"maximum",7,"score",0,"ocr","","remarks","","reviewed",false));
+        var two = new LinkedHashMap<String,Object>(Map.of("question",2,"maximum",7,"score",0,"ocr","","remarks","","reviewed",false));
+        workspace.scripts.get(0).put("answers",new ArrayList<>(List.of(one,two)));
+        mvc.perform(post("/api/scripts/SCR-1/review").with(user("marker").roles("MARKER")).with(csrf())
+            .contentType("application/json").content("{\"version\":1,\"question\":1,\"score\":5,\"ocr\":\"Answer one\",\"remarks\":\"\",\"submit\":true}"))
+            .andExpect(status().isBadRequest());
+    }
 }

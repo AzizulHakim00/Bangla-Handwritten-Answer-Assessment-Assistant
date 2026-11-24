@@ -34,7 +34,7 @@ Exams, exam-specific rubrics, uploaded script metadata, transcriptions, scores a
 
 ## Current scope and limits
 
-This is a **single-school manual assessment MVP**, not a finished AI grading product. There is one assessed answer per script. Multi-question segmentation, individual criterion scoring, OCR workers, automatic score suggestions, moderation rejection/reopening, appeals, and signed PDF exports remain future work. The workbench says manual transcription rather than inventing OCR output or evidence. Previous/next controls explain that more answers require segmentation.
+This is a **single-school manual assessment MVP**, not a finished AI grading product. New scripts support multiple question answers, moderation returns, and appeals. Automatic region segmentation, individual criterion scoring, OCR workers, automatic score suggestions, and signed PDF exports remain future work. The workbench says manual transcription rather than inventing OCR output or evidence. Previous/next controls navigate the saved question answers.
 
 Document uploads check size and file signatures. Full parser validation, malware scanning, file quotas, retention jobs and orphan-file cleanup after crashes are still needed for an internet-facing deployment. Uploaded PDF preview uses the browser's native PDF viewer; image preview uses the original image. No third-party OCR service receives documents.
 
@@ -52,3 +52,11 @@ mvn verify
 ```
 
 Tests cover page routing, anonymous access, CSRF, role enforcement, score bounds, blank-answer submission, immutable approved scores, independent approval and review history. GitHub Actions runs Maven verification. JavaScript syntax passes locally; full Maven and browser tests remain dependent on the execution environment's networking and browser support.
+
+## Next workflow update
+
+New uploads create one answer record per question in the selected exam. Each question gets a copy of the exam's shared rubric, its own transcription, score, review identity and original-page reference. Save a question before moving on (navigation also saves writable questions). Submission is allowed only after every question has a nonblank reviewed transcription. Script totals sum the question scores. Existing scripts remain compatible as one-answer scripts; new question counts apply only to new uploads.
+
+Moderators can return pending submissions with a required reason. Teachers can open an appeal on an approved script from Reports. The last approved snapshot remains available in CSV exports during re-marking. A new independent approval resolves the appeal and appends a replacement approval snapshot, preserving earlier approvals and review history.
+
+The original-document page reference is manual and does not crop or automatically segment PDF regions. Per-question rubric customization and automatic OCR are still future work. Review history includes question-score snapshots. The export always uses the latest approved revision, never an unapproved appeal draft.

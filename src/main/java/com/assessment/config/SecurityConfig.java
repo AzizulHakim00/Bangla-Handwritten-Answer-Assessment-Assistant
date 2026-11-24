@@ -29,7 +29,8 @@ public class SecurityConfig {
         return http.authorizeHttpRequests(a -> a
             .requestMatchers("/login", "/css/**", "/js/**", "/error").permitAll()
             .requestMatchers(org.springframework.http.HttpMethod.POST, "/api/exams", "/api/rubrics", "/api/uploads").hasRole("TEACHER")
-            .requestMatchers(org.springframework.http.HttpMethod.POST, "/api/scripts/*/approve").hasRole("MODERATOR")
+            .requestMatchers(org.springframework.http.HttpMethod.POST, "/api/scripts/*/approve", "/api/scripts/*/return").hasRole("MODERATOR")
+            .requestMatchers(org.springframework.http.HttpMethod.POST, "/api/scripts/*/appeals").hasRole("TEACHER")
             .requestMatchers(org.springframework.http.HttpMethod.POST, "/api/scripts/*/review").hasAnyRole("TEACHER", "MARKER")
             .anyRequest().authenticated())
             .formLogin(f -> f.loginPage("/login").defaultSuccessUrl("/dashboard", true).permitAll())

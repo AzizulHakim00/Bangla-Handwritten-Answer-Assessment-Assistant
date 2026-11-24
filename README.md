@@ -1,69 +1,48 @@
 # Bangla Handwritten Answer Assessment Assistant
 
-Spring Boot + Thymeleaf frontend based on the supplied lavender academic UI reference. Includes a MongoDB connection configuration and Docker Compose setup. No React build or Node runtime is required to run the application.
+Spring Boot 3.5 / Java 21, Thymeleaf, MongoDB and Docker. The lavender academic interface now uses authenticated server APIs rather than browser demo data.
 
-## Run with Docker
+## Start locally
 
-Install Docker Desktop, open a terminal in this repository, and run:
+1. Install Docker Desktop.
+2. Copy `.env.example` to `.env`.
+3. Set three **different** passwords, each at least 12 characters.
+4. Run `docker compose up --build`.
+5. Open http://localhost:8080/login.
 
-```sh
-docker compose up --build
-```
-
-Open http://localhost:8080/dashboard or http://localhost:8080/login.
-
-## Run with Java
-
-Requires Java 21 and Maven 3.9+.
-
-```sh
-mvn spring-boot:run
-```
-
-MongoDB is not needed to explore the frontend; its configured default URI is `mongodb://localhost:27017/answer_assessment`. Override it using `MONGODB_URI`. Mongo repositories and backend persistence are not implemented yet. MongoDB may log connection errors when started without a database.
-
-## Screens
-
-| Route | Experience |
+| Account | Responsibility |
 | --- | --- |
-| `/login` | Reference-style sign in, password visibility and demo entry |
-| `/dashboard` | Summary cards, recent scripts and marking workflow |
-| `/exams` | Exam list and validated create-exam dialog |
-| `/rubrics` | Editable Bangla criteria with dynamic mark totals |
-| `/scripts` | Search, exam filtering and status filtering |
-| `/upload` | File selection, validation and local script metadata |
-| `/review` | Answer preview, transcription editor, evidence, score, remarks and history |
-| `/moderation` | Demo approval queue |
-| `/reports` | Approved results and CSV export |
-| `/profile` | Demo profile and reset |
+| teacher@school.local | Create exams, save rubrics, upload scripts and review |
+| marker@school.local | Transcribe and mark uploaded answers |
+| moderator@school.local | Independently approve submitted marks |
 
-The design uses the reference's purple actions, lavender borders, pastel summary cards, rounded panels, Bangla text, split review workbench and mobile bottom navigation. The reference is a composite of several screens; each panel is implemented as its own usable route. The notebook is an illustrative typeset sample, not a scan or real OCR result. Login decoration uses CSS books rather than the photograph in the reference, so this is not a pixel-identical reproduction.
+Passwords come from `TEACHER_PASSWORD`, `MARKER_PASSWORD`, `MODERATOR_PASSWORD`. Accounts are deployment-configured and password hashes live in memory; this MVP has no public registration or password recovery. Sign out from Profile before switching accounts. Compose binds the app to localhost; neither MongoDB nor original documents have public static URLs.
 
-## Working frontend interactions
+For Java development, install Java 21 and Maven 3.9+, export those three password variables, and run `mvn spring-boot:run`. MongoDB defaults to `mongodb://localhost:27017/answer_assessment`; override using `MONGODB_URI`. Private originals default to `./data/scripts`; override using `SCRIPT_STORAGE`.
 
-Create exams, edit the sample rubric, filter scripts, edit transcription and scores, save drafts, submit a review, approve a sample result and export approved marks. Changes persist in browser localStorage. Use Profile → Reset Demo Data to start over. The sample rubric is shared across the demo workspace; exam/question-specific rubric versioning is not implemented. There is one sample answer and a ten-question indicator; previous/next controls explain that additional segmented answers require backend integration.
+## End-to-end manual assessment
 
-Uploads validate extensions and sizes and save metadata only. They do not upload file bytes, retain documents, perform OCR or manufacture recognition results. New script records show that document integration is pending.
+1. Sign in as teacher and create an exam.
+2. Open Rubrics, choose the exam, add criteria and save.
+3. Upload PDF, PNG or JPEG answer scripts, up to 20 MB each (10 per request).
+4. Open a script. The original is fetched from a protected endpoint; enter the verified answer transcription, score and remarks.
+5. Save a draft or submit for moderation.
+6. Sign in as moderator, inspect the submission, then approve from Moderation.
+7. Export approved marks as CSV from Reports.
 
-## Backend additions still needed
+Exams, exam-specific rubrics, uploaded script metadata, transcriptions, scores and historical reviews persist in MongoDB. Originals persist in a private Docker volume. Rubrics are snapshotted at upload so later rubric changes do not alter existing score limits. Submitted and approved answers cannot be overwritten. Each save stores a historical transcription, score, remarks, identity and timestamp. Optimistic locking rejects stale workspace writes (reload and retry). Approval requires a different identity from the reviewer. CSRF protection and role checks run on the server.
 
-1. Spring Security session login, CSRF protection, teacher/marker/moderator permissions and tenant isolation. Current sign in only validates the form and opens the demo.
-2. MongoDB domain models, repositories, service layer, exam-specific versioned rubrics and append-only mark revisions.
-3. Private document storage, server-side upload validation, PDFBox processing and PDF.js document preview/segmentation.
-4. A licensed Bangla handwriting OCR worker, persistent retryable jobs and manual transcription fallback.
-5. Evidence-based score suggestions, independent moderator authorization and approval bound to a reviewed revision.
-6. Appeals, audit history and signed PDF reports. Current evidence and AI score cards are illustrative sample data; CSV is not digitally signed.
+## Current scope and limits
 
-Do not use this frontend demo for real assessment decisions or private student documents before implementing those services. Docker's MongoDB service is private to the Compose network and uses a persistent volume; configure production credentials and backups before deployment. Approval transactions will need a MongoDB replica set.
+This is a **single-school manual assessment MVP**, not a finished AI grading product. There is one assessed answer per script. Multi-question segmentation, individual criterion scoring, OCR workers, automatic score suggestions, moderation rejection/reopening, appeals, and signed PDF exports remain future work. The workbench says manual transcription rather than inventing OCR output or evidence. Previous/next controls explain that more answers require segmentation.
 
-## Structure
+Document uploads check size and file signatures. Full parser validation, malware scanning, file quotas, retention jobs and orphan-file cleanup after crashes are still needed for an internet-facing deployment. Uploaded PDF preview uses the browser's native PDF viewer; image preview uses the original image. No third-party OCR service receives documents.
 
-- `src/main/java/com/assessment/controller/PageController.java`: Spring MVC routes
-- `src/main/resources/templates/app.html`: Thymeleaf application shell
-- `src/main/resources/static/css/app.css`: responsive reference-inspired styling
-- `src/main/resources/static/js/app.js`: frontend views and local demo state
-- `src/test/java/com/assessment/PageRoutesTest.java`: route tests without MongoDB
-- `.github/workflows/verify.yml`: Java build, route tests and JavaScript syntax check
+The school workspace is a single MongoDB aggregate for atomic revisions and approval without a replica-set transaction. This is suitable for small local academic demonstrations; split into collections and introduce transactional design before scaling near MongoDB's 16 MB document limit. Multi-school isolation, user administration, production HTTPS/secure cookies, authenticated database setup, backups, login rate limits and stronger audit controls are deployment work still required. Session state is server-side and sign-in sessions expire after 30 minutes of inactivity.
+
+## Interface
+
+Routes: `/dashboard`, `/exams`, `/rubrics`, `/scripts`, `/upload`, `/review`, `/moderation`, `/reports`, `/profile`, `/login`. The reference-inspired lavender design and mobile bottom navigation are retained. The supplied image is a composite of several views; the implementation provides separate usable routes. Pixel-identical visual verification has not been completed.
 
 ## Validation
 
@@ -72,4 +51,4 @@ node --check src/main/resources/static/js/app.js
 mvn verify
 ```
 
-JavaScript syntax was checked during implementation. Maven dependency downloads and browser rendering could not complete in the authoring environment because of network/process restrictions; the full Java build and visual comparison remain unverified. GitHub Actions runs the build on push.
+Tests cover page routing, anonymous access, CSRF, role enforcement, score bounds, blank-answer submission, immutable approved scores, independent approval and review history. GitHub Actions runs Maven verification. JavaScript syntax passes locally; full Maven and browser tests remain dependent on the execution environment's networking and browser support.

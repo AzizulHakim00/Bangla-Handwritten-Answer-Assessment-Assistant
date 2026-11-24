@@ -1,12 +1,25 @@
 services:
   app:
     build: .
-    ports: ["8080:8080"]
+    ports: ["127.0.0.1:8080:8080"]
     environment:
       MONGODB_URI: mongodb://mongo:27017/answer_assessment
-    depends_on: [mongo]
+      SCRIPT_STORAGE: /data/scripts
+      TEACHER_PASSWORD: ${TEACHER_PASSWORD:?Set TEACHER_PASSWORD in .env}
+      MARKER_PASSWORD: ${MARKER_PASSWORD:?Set MARKER_PASSWORD in .env}
+      MODERATOR_PASSWORD: ${MODERATOR_PASSWORD:?Set MODERATOR_PASSWORD in .env}
+    volumes: ["scripts:/data/scripts"]
+    depends_on:
+      mongo:
+        condition: service_healthy
   mongo:
     image: mongo:8.0
     volumes: ["mongo_data:/data/db"]
+    healthcheck:
+      test: ["CMD", "mongosh", "--quiet", "--eval", "db.adminCommand('ping').ok"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
 volumes:
   mongo_data:
+  scripts:

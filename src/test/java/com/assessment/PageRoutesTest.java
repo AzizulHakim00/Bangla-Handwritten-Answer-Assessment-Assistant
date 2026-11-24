@@ -10,6 +10,7 @@ import static org.springframework.test.web.servlet.request.MockMvcRequestBuilder
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.*;
 
 @WebMvcTest(PageController.class)
+@org.springframework.context.annotation.Import(com.assessment.config.SecurityConfig.class)
 @org.springframework.security.test.context.support.WithMockUser
 @org.springframework.test.context.TestPropertySource(properties={"TEACHER_PASSWORD=teacher-test-password", "MARKER_PASSWORD=marker-test-password", "MODERATOR_PASSWORD=moderator-test-password"})
 class PageRoutesTest {

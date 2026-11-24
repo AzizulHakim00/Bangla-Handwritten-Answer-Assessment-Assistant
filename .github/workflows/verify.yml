@@ -15,4 +15,7 @@ jobs:
           node-version: '22'
       - run: node --check src/main/resources/static/js/app.js
       - run: node scripts/frontend-smoke.cjs
+      - run: sudo apt-get update && sudo apt-get install -y tesseract-ocr tesseract-ocr-ben tesseract-ocr-eng
       - run: mvn -B verify
+        env:
+          OCR_NATIVE_TEST: "true"

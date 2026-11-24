@@ -34,7 +34,7 @@ Exams, exam-specific rubrics, uploaded script metadata, transcriptions, scores a
 
 ## Current scope and limits
 
-This is a **single-school manual assessment MVP**, not a finished AI grading product. New scripts support multiple question answers, moderation returns, and appeals. Automatic region segmentation, individual criterion scoring, OCR workers, automatic score suggestions, and signed PDF exports remain future work. The workbench says manual transcription rather than inventing OCR output or evidence. Previous/next controls navigate the saved question answers.
+This is a **single-school manual assessment MVP**, not a finished AI grading product. New scripts support multiple question answers, moderation returns, and appeals. Automatic region segmentation, individual criterion scoring, automatic score suggestions, strong handwriting model integration, and certificate-signed PDFs remain future work. The workbench says manual transcription rather than inventing OCR output or evidence. Previous/next controls navigate the saved question answers.
 
 Document uploads check size and file signatures. Full parser validation, malware scanning, file quotas, retention jobs and orphan-file cleanup after crashes are still needed for an internet-facing deployment. Uploaded PDF preview uses the browser's native PDF viewer; image preview uses the original image. No third-party OCR service receives documents.
 
@@ -59,4 +59,22 @@ New uploads create one answer record per question in the selected exam. Each que
 
 Moderators can return pending submissions with a required reason. Teachers can open an appeal on an approved script from Reports. The last approved snapshot remains available in CSV exports during re-marking. A new independent approval resolves the appeal and appends a replacement approval snapshot, preserving earlier approvals and review history.
 
-The original-document page reference is manual and does not crop or automatically segment PDF regions. Per-question rubric customization and automatic OCR are still future work. Review history includes question-score snapshots. The export always uses the latest approved revision, never an unapproved appeal draft.
+The original-document page reference is manual and does not crop or automatically segment PDF regions. Per-question rubric customization and automatic question segmentation are still future work. Review history includes question-score snapshots. The export always uses the latest approved revision, never an unapproved appeal draft.
+
+## Document regions, local OCR and PDF reports
+
+Open an editable answer and choose **Select Answer Region**. Load its original page and drag a rectangle, or enter normalized x/y/width/height values from 0 to 1. Saving validates the actual page and region bounds. Changing a region invalidates the question's reviewed flag and cancels its old OCR job. Regions are manual selections, not automatic segmentation.
+
+**Run Local OCR** saves the current question and queues a persistent local job. A single scheduled worker claims it with optimistic locking and retries abandoned running jobs after two minutes. Tesseract runs on the selected region with Bengali and English language data and a 45 second timeout. Docker includes the engine; Java-only development needs `tesseract` and `ben`/`eng` language data installed locally. A failed attempt records FAILED and leaves manual text and marks untouched. Use **Refresh Status**, then **Copy Draft for Correction**; compare it with the original and save manually. Tesseract is a baseline, not validated Bangla handwriting recognition, and no AI score is generated. Jobs and regions are stored in the school aggregate, so large-scale job queues remain future architecture work.
+
+Reports now offer a PDF and a **Signed Bundle** ZIP containing `approved-marks.pdf`, `manifest.json`, `manifest.sig`, and `public-key.pem`. The manifest binds the PDF checksum, workspace version, approved snapshots and original-document checksums. Its Ed25519 signature is detached; the PDF is **not** a PAdES/certificate-signed PDF. A signing key is generated on the first signed export and retained in the private scripts volume. Back up that volume securely. One application instance must own the signing key; multi-instance key provisioning and certificate trust management are future deployment work.
+
+Verify with Python and `cryptography` installed:
+
+```sh
+python -m pip install cryptography
+python scripts/verify-report.py approved-marks-signed.zip
+python scripts/verify-report.py approved-marks-signed.zip --trusted-key school-public-key.pem
+```
+
+The first command checks bundle integrity using its included key. Establish the school's key independently and use `--trusted-key` to authenticate subsequent exports; an included key alone cannot prove who signed. The report uses ASCII script/exam identifiers and numeric marks; Bangla typography in exported PDFs is not implemented. PDF rendering and image decoding are capped at 16 megapixels per page; full parser isolation and malware scanning remain deployment work.

@@ -169,7 +169,7 @@ public class AssessmentApi {
             event(s, "Appeal opened: " + reason, principal.getName());
         });
     }
-    @SuppressWarnings("unchecked") private static List<Map<String,Object>> answers(Map<String,Object> s) {
+    @SuppressWarnings("unchecked") public static List<Map<String,Object>> answers(Map<String,Object> s) {
         if (s.get("answers") instanceof List<?>) return (List<Map<String,Object>>)s.get("answers");
         var answer = new LinkedHashMap<String,Object>();
         for (String key : List.of("score", "ocr", "remarks", "maximum", "criteria", "reviewedBy"))

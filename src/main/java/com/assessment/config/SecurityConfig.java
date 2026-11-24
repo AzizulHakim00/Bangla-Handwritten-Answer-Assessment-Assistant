@@ -31,7 +31,7 @@ public class SecurityConfig {
             .requestMatchers(org.springframework.http.HttpMethod.POST, "/api/exams", "/api/rubrics", "/api/uploads").hasRole("TEACHER")
             .requestMatchers(org.springframework.http.HttpMethod.POST, "/api/scripts/*/approve", "/api/scripts/*/return").hasRole("MODERATOR")
             .requestMatchers(org.springframework.http.HttpMethod.POST, "/api/scripts/*/appeals").hasRole("TEACHER")
-            .requestMatchers(org.springframework.http.HttpMethod.POST, "/api/scripts/*/review").hasAnyRole("TEACHER", "MARKER")
+            .requestMatchers(org.springframework.http.HttpMethod.POST, "/api/scripts/*/review", "/api/scripts/*/region", "/api/scripts/*/ocr").hasAnyRole("TEACHER", "MARKER")
             .anyRequest().authenticated())
             .formLogin(f -> f.loginPage("/login").defaultSuccessUrl("/dashboard", true).permitAll())
             .logout(l -> l.logoutSuccessUrl("/login?logout"))

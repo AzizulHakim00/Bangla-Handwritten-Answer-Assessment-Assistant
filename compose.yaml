@@ -1,0 +1,12 @@
+services:
+  app:
+    build: .
+    ports: ["8080:8080"]
+    environment:
+      MONGODB_URI: mongodb://mongo:27017/answer_assessment
+    depends_on: [mongo]
+  mongo:
+    image: mongo:8.0
+    volumes: ["mongo_data:/data/db"]
+volumes:
+  mongo_data:

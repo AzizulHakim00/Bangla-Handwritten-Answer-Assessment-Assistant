@@ -113,4 +113,40 @@ class AssessmentApiTest {
             .contentType("application/json").content("{\"version\":1,\"question\":1,\"score\":5,\"ocr\":\"Answer one\",\"remarks\":\"\",\"submit\":true}"))
             .andExpect(status().isBadRequest());
     }
+
+    private void criterionAnswer() {
+        var s=workspace.scripts.get(0);
+        s.put("answers",new ArrayList<>(List.of(new LinkedHashMap<String,Object>(Map.of(
+            "question",1,"maximum",7,"score",0,"ocr","","remarks","","scoringMode","CRITERIA",
+            "criteria",List.of(Map.of("text","Definition","marks",7)))))));
+    }
+    @Test void criterionMarksNeedEvidenceFromTranscription() throws Exception {
+        criterionAnswer();
+        mvc.perform(post("/api/scripts/SCR-1/review").with(user("marker").roles("MARKER")).with(csrf())
+            .contentType("application/json").content("{\"version\":1,\"score\":6,\"ocr\":\"Actual answer\",\"remarks\":\"\",\"awards\":[{\"marks\":6,\"evidence\":\"Invented text\"}]}"))
+            .andExpect(status().isBadRequest());
+    }
+    @Test void criterionSumMustEqualQuestionTotal() throws Exception {
+        criterionAnswer();
+        mvc.perform(post("/api/scripts/SCR-1/review").with(user("marker").roles("MARKER")).with(csrf())
+            .contentType("application/json").content("{\"version\":1,\"score\":7,\"ocr\":\"Actual answer\",\"remarks\":\"\",\"awards\":[{\"marks\":6,\"evidence\":\"Actual answer\"}]}"))
+            .andExpect(status().isBadRequest());
+    }
+    @Test void criterionReviewPreservesEvidenceInHistory() throws Exception {
+        criterionAnswer();
+        mvc.perform(post("/api/scripts/SCR-1/review").with(user("marker").roles("MARKER")).with(csrf())
+            .contentType("application/json").content("{\"version\":1,\"score\":6,\"ocr\":\"Actual answer\",\"remarks\":\"Reviewed\",\"submit\":true,\"awards\":[{\"marks\":6,\"evidence\":\"Actual answer\"}]}"))
+            .andExpect(status().isOk()).andExpect(jsonPath("$.scripts[0].history[0].answers[0].awards[0].evidence").value("Actual answer"));
+    }
+    @Test void uploadCopiesDifferentRubricsForDifferentQuestions() throws Exception {
+        workspace.exams.add(new LinkedHashMap<>(Map.of("id","EX-1","questions",2,"scoringMode","CRITERIA",
+            "criteria",List.of(Map.of("text","Default","marks",2)),
+            "questionRubrics",Map.of("2",List.of(Map.of("text","Second question","marks",7))))));
+        var file=new org.springframework.mock.web.MockMultipartFile("files","answer.pdf","application/pdf","%PDF-test".getBytes());
+        mvc.perform(multipart("/api/uploads").file(file).param("version","1").param("exam","EX-1")
+            .with(user("teacher").roles("TEACHER")).with(csrf()))
+            .andExpect(status().isOk()).andExpect(jsonPath("$.scripts[1].maximum").value(9))
+            .andExpect(jsonPath("$.scripts[1].answers[0].maximum").value(2))
+            .andExpect(jsonPath("$.scripts[1].answers[1].maximum").value(7));
+    }
 }

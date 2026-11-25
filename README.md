@@ -80,3 +80,12 @@ python scripts/verify-report.py approved-marks-signed.zip --trusted-key school-p
 The first command checks bundle integrity using its included key. Establish the school's key independently and use `--trusted-key` to authenticate subsequent exports; an included key alone cannot prove who signed. The report uses ASCII script/exam identifiers and numeric marks; Bangla typography in exported PDFs is not implemented. PDF rendering and image decoding are capped at 16 megapixels per page; full parser isolation and malware scanning remain deployment work.
 
 The local browser address is `http://localhost:8085`. Docker publishes host port 8085 to container port 8080. Java-only runs also default to 8085; set `PORT` to override that default.
+
+
+## Question-specific rubrics and criterion evidence
+
+In Rubrics, choose an exam, then either its default rubric or a specific question. Question rubrics override the default for that question. New uploads require a rubric for every question, provided through overrides or the default. Each question saves its own rubric snapshot and mark limit.
+
+For new scripts created after a rubric is saved with this release, markers score each criterion and paste an exact supporting excerpt from the verified transcription for positive marks. The server checks criterion bounds, validates that excerpts occur in the transcription, and rejects totals that differ from the sum of criterion marks. Excerpts establish traceability, not semantic correctness; deciding whether the answer satisfies a criterion remains a human task. No automatic or AI mark suggestion is claimed.
+
+Existing scripts retain their original manual-total mode and rubric limits. Saved criterion marks and evidence are included in answer revision history and approved snapshots, so appeals and signed manifests preserve them.

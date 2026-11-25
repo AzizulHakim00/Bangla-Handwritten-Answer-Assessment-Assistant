@@ -40,7 +40,7 @@ public class AssessmentApi {
             "name", name, "subject", subject, "questions", r.questions, "date", r.date))));
     }
     public record Criterion(String text, int marks) {}
-    public record RubricRequest(long version, String exam, List<Criterion> criteria) {}
+    public record RubricRequest(long version, String exam, List<Criterion> criteria, Integer question) {}
     @PostMapping("/rubrics") public Workspace rubric(@RequestBody RubricRequest r) {
         check(r.criteria != null && !r.criteria.isEmpty() && r.criteria.size() <= 30, "Provide 1–30 criteria");
         List<Map<String,Object>> criteria = new ArrayList<>();
@@ -51,7 +51,13 @@ public class AssessmentApi {
         return service.change(r.version, w -> {
             Map<String,Object> exam = exam(w, r.exam);
             // Existing scripts retain the rubric snapshot captured at upload.
-            exam.put("criteria", criteria); w.criteria = criteria;
+            if(r.question==null||r.question==0) exam.put("criteria",criteria);
+            else {
+                check(r.question>=1&&r.question<=((Number)exam.get("questions")).intValue(),"Question is outside the exam");
+                @SuppressWarnings("unchecked") var rubrics=(Map<String,Object>)exam.computeIfAbsent("questionRubrics",k->new LinkedHashMap<>());
+                rubrics.put(r.question.toString(),criteria);
+            }
+            exam.put("scoringMode","CRITERIA"); w.criteria = criteria;
         });
     }
     @PostMapping("/uploads") public Workspace upload(@RequestParam long version, @RequestParam String exam,
@@ -75,18 +81,20 @@ public class AssessmentApi {
             return service.change(version, w -> {
                 Map<String,Object> selected = exam(w, exam);
                 Object criteria = selected.get("criteria");
-                check(criteria instanceof List<?> list && !list.isEmpty(), "Save an exam rubric before uploading");
+                int questionCount=((Number)selected.get("questions")).intValue();
+                for(int q=1;q<=questionCount;q++) check(questionCriteria(selected,q) instanceof List<?> list&&!list.isEmpty(),"Save a default rubric or a rubric for every question before uploading");
                 scripts.forEach(s -> {
-                    s.put("criteria", criteria);
+                    s.put("criteria", questionCriteria(selected,1));
                     int count = ((Number)selected.get("questions")).intValue();
                     List<Map<String,Object>> answers = new ArrayList<>();
                     for (int q = 1; q <= count; q++) {
                         var answer = new LinkedHashMap<String,Object>();
                         answer.putAll(Map.of("question", q, "page", 1, "score", 0, "ocr", "", "remarks", "", "reviewed", false,
-                            "maximum", maximum(criteria), "criteria", copy(criteria)));
+                            "maximum", maximum(questionCriteria(selected,q)), "criteria", copy(questionCriteria(selected,q))));
+                        if("CRITERIA".equals(selected.get("scoringMode"))) answer.put("scoringMode","CRITERIA");
                         answers.add(answer);
                     }
-                    s.put("answers", answers); s.put("maximum", count * maximum(criteria));
+                    s.put("answers", answers); s.put("maximum", answers.stream().mapToInt(a->((Number)a.get("maximum")).intValue()).sum());
                 });
                 w.scripts.addAll(scripts);
             });
@@ -100,7 +108,8 @@ public class AssessmentApi {
             .header("Content-Disposition", "inline; filename=answer-script")
             .cacheControl(CacheControl.noStore()).body(Files.readAllBytes(path));
     }
-    public record ReviewRequest(long version, String ocr, String remarks, Integer score, boolean submit, Integer question, Integer page) {}
+    public record Award(int marks,String evidence) {}
+    public record ReviewRequest(long version, String ocr, String remarks, Integer score, boolean submit, Integer question, Integer page, List<Award> awards) {}
     @PostMapping("/scripts/{id}/review") public Workspace review(@PathVariable String id, @RequestBody ReviewRequest r, Principal principal) {
         return service.change(r.version, w -> {
             Map<String,Object> s = WorkspaceService.script(w, id);
@@ -112,6 +121,19 @@ public class AssessmentApi {
             int max = ((Number)answer.get("maximum")).intValue();
             check(r.score != null && r.score >= 0 && r.score <= max, "Score exceeds rubric limits");
             String transcription = bounded(r.ocr, 30000);
+            if("CRITERIA".equals(answer.get("scoringMode"))) {
+                var criteriaList=(List<?>)answer.get("criteria");
+                check(r.awards!=null&&r.awards.size()==criteriaList.size(),"Score each rubric criterion");
+                int awarded=0;List<Map<String,Object>> evidence=new ArrayList<>();
+                for(int i=0;i<criteriaList.size();i++) {
+                    var criterion=(Map<?,?>)criteriaList.get(i);var award=r.awards.get(i);
+                    check(award!=null&&award.marks>=0&&award.marks<=((Number)criterion.get("marks")).intValue(),"Criterion score exceeds its maximum");
+                    String quote=bounded(award.evidence,2000).strip();
+                    check(award.marks==0||(!quote.isBlank()&&transcription.contains(quote)),"Positive criterion marks need an exact excerpt from the verified transcription");
+                    evidence.add(new LinkedHashMap<>(Map.of("marks",award.marks,"evidence",quote)));awarded+=award.marks;
+                }
+                check(awarded==r.score,"Question score must equal the sum of criterion marks");answer.put("awards",evidence);
+            }
             if (r.page != null) { check(r.page >= 1 && r.page <= 500, "Page must be between 1 and 500"); answer.put("page", r.page); }
             answer.put("ocr", transcription); answer.put("remarks", bounded(r.remarks, 2000)); answer.put("score", r.score);
             answer.put("reviewedBy", principal.getName()); answer.put("reviewed", !transcription.isBlank());
@@ -214,6 +236,10 @@ public class AssessmentApi {
     }
     private static Map<String,Object> exam(Workspace w, String id) {
         return w.exams.stream().filter(e -> Objects.equals(id, e.get("id"))).findFirst().orElseThrow(() -> bad("Exam not found"));
+    }
+    private static Object questionCriteria(Map<String,Object> exam,int q) {
+        if(exam.get("questionRubrics") instanceof Map<?,?> rubrics&&rubrics.containsKey(Integer.toString(q))) return rubrics.get(Integer.toString(q));
+        return exam.get("criteria");
     }
     private static int maximum(Object criteria) {
         int sum = 0;

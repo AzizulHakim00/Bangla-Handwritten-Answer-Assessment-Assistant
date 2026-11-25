@@ -34,7 +34,7 @@ Exams, exam-specific rubrics, uploaded script metadata, transcriptions, scores a
 
 ## Current scope and limits
 
-This is a **single-school manual assessment MVP**, not a finished AI grading product. New scripts support multiple question answers, moderation returns, and appeals. Automatic region segmentation, individual criterion scoring, automatic score suggestions, strong handwriting model integration, and certificate-signed PDFs remain future work. The workbench says manual transcription rather than inventing OCR output or evidence. Previous/next controls navigate the saved question answers.
+This is a **single-school manual assessment MVP**, not a finished AI grading product. New scripts support multiple question answers, moderation returns, and appeals. Automatic region segmentation, automatic score suggestions, strong handwriting model integration, and certificate-signed PDFs remain future work. The workbench says manual transcription rather than inventing OCR output or evidence. Previous/next controls navigate the saved question answers.
 
 Document uploads check size and file signatures. Full parser validation, malware scanning, file quotas, retention jobs and orphan-file cleanup after crashes are still needed for an internet-facing deployment. Uploaded PDF preview uses the browser's native PDF viewer; image preview uses the original image. No third-party OCR service receives documents.
 
@@ -59,7 +59,7 @@ New uploads create one answer record per question in the selected exam. Each que
 
 Moderators can return pending submissions with a required reason. Teachers can open an appeal on an approved script from Reports. The last approved snapshot remains available in CSV exports during re-marking. A new independent approval resolves the appeal and appends a replacement approval snapshot, preserving earlier approvals and review history.
 
-The original-document page reference is manual and does not crop or automatically segment PDF regions. Per-question rubric customization and automatic question segmentation are still future work. Review history includes question-score snapshots. The export always uses the latest approved revision, never an unapproved appeal draft.
+The original-document page reference is manual and does not crop or automatically segment PDF regions. Automatic question segmentation remains future work. Review history includes question-score snapshots. The export always uses the latest approved revision, never an unapproved appeal draft.
 
 ## Document regions, local OCR and PDF reports
 

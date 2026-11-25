@@ -27,7 +27,7 @@ foreach ($role in @('TEACHER','MARKER','MODERATOR')) {
 }
 docker compose up -d --no-deps --force-recreate app
 if ($LASTEXITCODE -ne 0) { throw 'Passwords saved, but container recreation failed. Start Docker Desktop and rerun docker compose up -d.' }
-Write-Host 'Passwords updated. Open http://localhost:8080/login and use the new password you entered.'
+Write-Host 'Passwords updated. Open http://localhost:8085/login and use the new password you entered.'
 Write-Host 'Teacher login: teacher@school.local'
 Write-Host 'Marker login: marker@school.local'
 Write-Host 'Moderator login: moderator@school.local'

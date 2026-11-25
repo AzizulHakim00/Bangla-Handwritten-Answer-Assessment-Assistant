@@ -8,7 +8,7 @@ Spring Boot 3.5 / Java 21, Thymeleaf, MongoDB and Docker. The lavender academic 
 2. Copy `.env.example` to `.env`.
 3. Set three **different** passwords, each at least 12 characters.
 4. Run `docker compose up --build`.
-5. Open http://localhost:8080/login.
+5. Open http://localhost:8085/login.
 
 | Account | Responsibility |
 | --- | --- |
@@ -78,3 +78,5 @@ python scripts/verify-report.py approved-marks-signed.zip --trusted-key school-p
 ```
 
 The first command checks bundle integrity using its included key. Establish the school's key independently and use `--trusted-key` to authenticate subsequent exports; an included key alone cannot prove who signed. The report uses ASCII script/exam identifiers and numeric marks; Bangla typography in exported PDFs is not implemented. PDF rendering and image decoding are capped at 16 megapixels per page; full parser isolation and malware scanning remain deployment work.
+
+The local browser address is `http://localhost:8085`. Docker publishes host port 8085 to container port 8080. Java-only runs also default to 8085; set `PORT` to override that default.

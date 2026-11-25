@@ -13,6 +13,9 @@ import org.springframework.security.web.util.matcher.AntPathRequestMatcher;
 
 @Configuration
 public class SecurityConfig {
+    @Bean org.springframework.security.crypto.password.PasswordEncoder passwordEncoder() {
+        return new BCryptPasswordEncoder();
+    }
     @Bean UserDetailsService users(Environment env) {
         var users = new InMemoryUserDetailsManager();
         var encoder = new BCryptPasswordEncoder();

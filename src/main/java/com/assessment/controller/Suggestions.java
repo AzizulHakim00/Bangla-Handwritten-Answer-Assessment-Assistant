@@ -72,11 +72,13 @@ final class Suggestions {
             for (Object raw : spans) {
                 var span = (Map<?, ?>) raw;
                 if (((Number) span.get("start")).intValue() <= offset && ((Number) span.get("end")).intValue() >= offset + quote.length()
-                    && span.get("source") instanceof Map<?, ?> region && (regions.isEmpty() ||
-                    regions.stream().anyMatch(saved -> ScriptTranscription.sameRegion(saved, region)))) return region;
+                    && span.get("source") instanceof Map<?, ?> region) return region;
             }
         }
-        return regions.size() == 1 ? regions.getFirst() : null;
+        if (regions.size() != 1) return null;
+        var region = regions.getFirst();
+        return spans.stream().allMatch(raw -> ((Map<?, ?>) raw).get("source") instanceof Map<?, ?> source
+            && ScriptTranscription.sameRegion(region, source)) ? region : null;
     }
 
     static boolean overridden(Map<String, Object> answer, BigDecimal score, List<AssessmentApi.Award> awards) {

@@ -59,3 +59,11 @@
 .login-account>summary{color:var(--purple);font-size:14px;font-weight:600;cursor:pointer}
 .login-account[open]>summary{margin-bottom:16px}
 .login-account>.text-button{display:block;margin:18px auto 0}
+
+.review-controls{display:flex;align-items:center;flex-wrap:wrap;gap:8px;margin:0 0 14px}
+.review-access>p{margin:0 0 10px}
+.review-access .review-controls{margin:0}
+.viewer-toolbar{height:auto;min-height:44px;flex-wrap:wrap}
+.viewer-toolbar>span{margin:0}
+.viewer-toolbar>label>input{width:3.4rem}
+.viewer-toolbar>.button{font-size:12px;padding:8px 10px}

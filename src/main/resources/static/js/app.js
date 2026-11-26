@@ -5,7 +5,7 @@ const icon=(n,cls='')=>`<svg class="icon ${cls}" viewBox="0 0 24 24" fill="none"
 const logo=`<svg class="logo" viewBox="0 0 60 52" aria-hidden="true"><path fill="currentColor" d="M1 15 30 4l29 11-29 11Z"/><path d="M9 22v18c9-1 15 2 21 7 6-5 12-8 21-7V22M4 18v15" fill="none" stroke="currentColor" stroke-width="4"/><path d="m17 26 13 5 13-5v9c-5 0-9 2-13 5-4-3-8-5-13-5Z" fill="currentColor"/></svg>`;
 let state={exams:[],scripts:[],criteria:[],version:0};
 const routeParams=new URLSearchParams(location.search);
-const release='2026.11.26-r3.4';
+const release='2026.11.26-r3.5';
 const authenticatorEnabled=document.querySelector('meta[name=authenticator-enabled]')?.content==='true';
 const localDemoEnabled=document.querySelector('meta[name=local-demo-enabled]')?.content==='true';
 const knownPageCounts=new Map();
@@ -20,6 +20,7 @@ function rememberRubric(){
   try{sessionStorage.setItem('rubric:'+state.tenant+':'+state.user,JSON.stringify([rubricExam,rubricQuestion]))}catch{}
 }
 const toast=t=>{$('#toast').textContent=t;$('#toast').classList.add('visible');setTimeout(()=>$('#toast').classList.remove('visible'),3500)};
+const csrfField=()=>`<input type="hidden" name="_csrf" value="${esc(document.querySelector('meta[name=csrf-token]')?.content||'')}">`;
 const btn=(text,action,ic='',secondary=false)=>`<button class="button ${secondary?'secondary':''}" data-action="${action}">${ic?icon(ic):''}${text}</button>`;
 const link=(text,url,ic='',secondary=false)=>`<a class="button ${secondary?'secondary':''}" href="${url}">${ic?icon(ic):''}${text}</a>`;
 const sumMarks=values=>values.reduce((sum,value)=>sum+Math.round(Number(value)*100),0)/100;
@@ -124,6 +125,32 @@ async function loadLegacyPageCount(){
   render();
   if(draft&&writable())restoreDraft(draft);
 }
+function reviewControls(parent, regions){
+  if(writable()){
+    const running=activeStatus(jobFor(parent)?.state);
+    return `<div class="review-controls">
+      <button class="button" data-action="assess-script" ${running?'disabled':''}>${icon('layers')} Auto OCR &amp; Assess</button>
+      ${regions.length?btn('Run Region OCR','run-ocr','file',true):''}${btn('Add Answer Region','select-region','expand',true)}
+      ${btn('Save Question','save-draft','save',true)}${btn('Submit All Questions','submit-review','arrow',true)}
+    </div>`;
+  }
+  if(!editable()){
+    return `<p class="notice">${parent.status==='Approved'?'The marks have been approved.':'The marks are awaiting moderation.'}${moderator()&&parent.status==='Pending Moderation'?' <a href="/moderation">Open moderation</a>':''}</p>`;
+  }
+  if(!teacher())return '<p class="notice">The assigned marker can run OCR and submit marks for moderation.</p>';
+  const demoAssignment=parent.marker==='marker@school.local'||(!Object.hasOwn(parent,'marker')&&!Object.hasOwn(parent,'tenant'));
+  const switchToMarker=localDemoEnabled&&demoAssignment;
+  return `<div class="notice review-access"><p><strong>Teacher view.</strong> The assigned marker runs OCR, edits the transcription, and submits marks.${parent.marker?' Assigned to '+esc(parent.marker)+'.':''}</p>
+    <div class="review-controls">
+      ${switchToMarker?`<form id="demo-login-form" action="/login" method="post">
+        ${csrfField()}<input type="hidden" name="reviewScript" value="${esc(parent.id)}">
+        <button class="button" type="submit" name="demoRole" value="MARKER">${icon('arrow')} Open as Demo Marker</button>
+      </form>`:''}
+      <button class="button secondary" data-assignment="${esc(parent.id)}">Assign Script</button>
+      ${canRebind(parent)?`<button class="button secondary" data-binding="${esc(parent.id)}">Change Exam / Rubric</button>`:''}
+      ${canSegment()?btn('Add Answer Region','select-region','expand',true):''}
+    </div></div>`;
+}
 function review(){
   const parent=script();
   const item=answer();
@@ -136,23 +163,24 @@ function review(){
   const score=item.score??'';
   return shell(`<div class="review-heading"><a class="icon-button" href="/scripts" aria-label="Back to scripts">${icon('back')}</a><h1>Review &amp; Assess Answer</h1>
     <div>${esc(parent.candidateToken||parent.id)} <span class="divider">|</span> ${parent.rubricScope===0?'Default rubric · Entire script':`Question <strong>${item.examQuestion||question}${parent.rubricScope>0?'':' / '+(parent.answers?.length||1)}</strong>`} · ${examName(parent.exam)}</div>
-    <button class="icon-button" data-action="prev-question" aria-label="Previous question">${icon('back')}</button><button class="icon-button" data-action="next-question" aria-label="Next question">${icon('chevron')}</button></div>
-    ${teacher()&&canRebind(parent)?`<p><button class="button secondary" data-binding="${parent.id}">Change Exam / Rubric</button></p>`:''}
+    <button class="icon-button" data-action="prev-question" aria-label="Previous question" ${question<=1?'disabled':''}>${icon('back')}</button>
+    <button class="icon-button" data-action="next-question" aria-label="Next question" ${question>=(parent.answers?.length||1)?'disabled':''}>${icon('chevron')}</button></div>
+    ${reviewControls(parent, regions)}
+    ${assessmentJobPanel(parent)}
     <section class="panel workbench"><div class="document">
       <div class="viewer-toolbar"><label>Original page <input id="viewer-page" type="number" min="1" max="${pages}" value="${shownPage}"></label>
+      <span class="muted">of ${parent.pages||knownPageCounts.get(parent.id)||(parent.mime==='application/pdf'?'…':1)}</span>
       <button class="button secondary" data-action="prev-page" ${shownPage<=1?'disabled':''}>Previous Page</button>
       <button class="button secondary" data-action="next-page" ${shownPage>=pages?'disabled':''}>Next Page</button>
       <button class="icon-button" data-action="expand" aria-label="Expand answer">${icon('expand')}</button></div>
       <div class="paper-scroll"><img id="review-image" class="original-image" src="/api/scripts/${parent.id}/pages/${shownPage}" alt="Original handwritten answer page"></div>
       <a class="sample-caption" href="/api/scripts/${parent.id}/document" target="_blank" rel="noopener">Download original document</a>
       ${regions.length?`<div class="document-tools">${regions.map((r,i)=>`<button class="button secondary" data-region="${i}">Region ${i+1} · Page ${r.page}</button>`).join('')}</div>`:''}
-      <div class="document-tools">${canSegment()?btn('Add Answer Region','select-region','expand',true):''}${writable()?(regions.length?btn('Run Region OCR','run-ocr','file',true):'')+btn('Auto OCR & Assess','assess-script','layers',true):''}</div>
-      ${assessmentJobPanel(parent)}
     </div><div class="transcription">
       <div class="tabs" role="tablist">${['OCR Text','Script OCR','Rubric & Score','History'].map(t=>`<button role="tab" aria-selected="${tab===t}" class="${tab===t?'active':''}" data-tab="${t}">${t}</button>`).join('')}</div>
       <textarea id="ocr-text" lang="bn" aria-label="Verified transcription" ${tab==='OCR Text'?'':'hidden'} placeholder="Verify against the original handwriting">${esc(s.ocr||'')}</textarea>
       <div id="tab-content">
-        ${tab==='OCR Text'?`${ocrPanel(s)}${suggestionPanel(item)}`:tab==='History'?historyPanel(parent):tab==='Script OCR'?scriptOcrPanel(parent):`<h3>Rubric &amp; Score</h3>
+        ${tab==='OCR Text'?`${ocrPanel(s)}${suggestionPanel(item)}`:tab==='History'?historyPanel(parent):tab==='Script OCR'?scriptOcrPanel(parent, shownPage):`<h3>Rubric &amp; Score</h3>
           ${state.criteria.map(c=>`<div class="evidence">${esc(c.text)}<strong>${c.marks} marks</strong></div>`).join('')}
           ${item.rubricVersion?.startsWith('RUB-')?`<p><a href="/api/rubrics/${item.rubricVersion}/signed">Download the signed rubric used for this answer</a></p>`:''}${suggestionPanel(item)}`}
       </div>
@@ -166,21 +194,20 @@ function review(){
         <label>Remarks<textarea id="remarks" lang="bn" maxlength="2000">${esc(s.remarks||'')}</textarea></label>
         <p class="small muted">Explain manual review and changes to suggested marks in Remarks.</p>
       </form></div>
-      <div class="review-actions">${writable()?btn('Save Question','save-draft','save',true)+btn('Submit All Questions','submit-review','arrow'):'<p class="muted">Marks are read-only for this role or stage.</p>'}</div>
     </section>${workflow()}`,'Scripts');
 }
 function historyPanel(parent){
   const rows=parent.history||[];
   return `<h3>Review History</h3>${rows.length?rows.map(h=>`<div class="history-item">${icon('check')}<div>${esc(h.action)}<small>${esc(h.time)} · ${esc(h.user||'')}</small><small>Score ${h.score??'—'} · ${esc(h.answers?.map(a=>`Q${a.question} ${a.score??'—'}/${a.maximum}`).join(' · ')||'')}</small></div></div>`).join(''):'<p class="muted">No saved revisions yet.</p>'}`;
 }
-function scriptOcrPanel(parent){
+function scriptOcrPanel(parent, shownPage){
   const pages=parent.automationPages||[];
   return pages.length?`<h3>Extracted Script Pages</h3><p>Use the page text to check which answer it belongs to.</p>
-    ${pages.map(page=>`<details class="ocr-panel"><summary>Page ${page.page} · ${page.text?'OCR available':'Needs manual review'}</summary>
+    ${pages.map(page=>`<details class="ocr-panel" data-ocr-page="${page.page}" ${page.page===shownPage?'open':''}><summary>Page ${page.page} · ${page.text?'OCR available':'Needs manual review'}</summary>
       ${page.text?`<textarea readonly lang="bn" aria-label="Page ${page.page} OCR text">${esc(page.text)}</textarea>`:''}
       <div class="document-tools"><button class="button secondary" data-source-page="${page.page}">View Page ${page.page}</button>
       ${writable()&&page.text?`<button class="button secondary" data-copy-page="${page.page}">Append to Current Answer</button>`:''}</div></details>`).join('')}`
-    :'<p>Page transcriptions appear here when automatic OCR runs on an unsegmented script.</p>';
+    :'<p>Page transcriptions appear here as Auto OCR &amp; Assess processes the script.</p>';
 }
 function suggestionPanel(item){
   const result=item.suggestion;
@@ -270,10 +297,9 @@ function verifyPage(){
     <p id="verify-result" role="status"></p></form></section>`,'Verify');
 }
 function login(){
-  const csrfField = `<input type="hidden" name="_csrf" value="${esc(document.querySelector('meta[name=csrf-token]')?.content||'')}">`;
   const accountLogin = `
       <form id="login-form" action="/login" method="post">
-        ${csrfField}
+        ${csrfField()}
         <label for="login-email">Email address</label>
         <div class="input-icon">
           ${icon('mail')}
@@ -302,7 +328,7 @@ function login(){
       <p>${localDemoEnabled ? 'Choose a role to open the test workspace.' : 'Access your academic assessment account'}</p>
       ${localDemoEnabled ? `
         <form id="demo-login-form" class="login-demo-roles" action="/login" method="post">
-          ${csrfField}
+          ${csrfField()}
           <button class="button" type="submit" name="demoRole" value="TEACHER">Demo Teacher ${icon('arrow')}</button>
           <button class="button" type="submit" name="demoRole" value="MARKER">Demo Marker ${icon('arrow')}</button>
           <button class="button" type="submit" name="demoRole" value="MODERATOR">Demo Moderator ${icon('arrow')}</button>
@@ -316,7 +342,7 @@ function login(){
   </div>`;
 }
 function profile(){return shell(`${heading('Your Profile','Manage your assessment workspace.')}<section class="panel narrow"><div class="profile-avatar">T</div><h2>${esc(state.user||"School account")}</h2><p class="muted">${esc(state.role||"")} · Academic assessment workspace</p><div class="form-actions">${btn('Sign Out','logout','',true)}</div></section>`,'')}
-function render(){const p=location.pathname;$('#app').innerHTML=({'/login':login,'/rubrics':rubrics,'/review':review,'/exams':exams,'/scripts':scripts,'/upload':upload,'/moderation':moderation,'/reports':reports,'/profile':profile,'/verify':verifyPage}[p]||dashboard)();document.title=(`${p.slice(1)||'Dashboard'} · Answer Assessment Assistant`);if(p==='/review'&&!writable()){document.querySelectorAll('#review-form input,#review-form textarea,#ocr-text').forEach(el=>el.disabled=true)}}
+function render(){const p=location.pathname;$('#app').innerHTML=({'/login':login,'/rubrics':rubrics,'/review':review,'/exams':exams,'/scripts':scripts,'/upload':upload,'/moderation':moderation,'/reports':reports,'/profile':profile,'/verify':verifyPage}[p]||dashboard)();document.title=(`${p.slice(1)||'Dashboard'} · Answer Assessment Assistant`);if(p==='/review'&&!writable()){document.querySelectorAll('#review-form input,#review-form textarea,#review-form select,#ocr-text').forEach(el=>el.disabled=true)}}
 async function api(path,body,extraHeaders={}){
   const c=await fetch('/api/csrf').then(r=>r.json());
   const headers={[c.headerName]:c.token,...extraHeaders};
@@ -420,6 +446,9 @@ function showPage(page){
   viewerPage=page;
   $('#viewer-page').value=page;
   $('#review-image').src='/api/scripts/'+script().id+'/pages/'+page;
+  $('.paper-scroll').scrollTop=0;
+  const pageText=$('[data-ocr-page="'+page+'"]');
+  if(pageText)pageText.open=true;
   $('[data-action=prev-page]').disabled=page<=1;
   $('[data-action=next-page]').disabled=page>=max;
 }
@@ -445,7 +474,8 @@ function applySuggestions(){
 }
 function assessmentJobPanel(parent){
   const job=jobFor(parent);
-  return job?`<div class="notice assessment-progress"><p>${esc(job.state)} · ${job.progress}%</p>
+  const labels={PENDING:'Queued',RUNNING:'Processing',NEEDS_REVIEW:'Ready to verify',MANUAL_REVIEW:'Needs manual review',STALE:'Outdated',FAILED:'Failed'};
+  return job?`<div class="notice assessment-progress" role="status"><p>${esc(labels[job.state]||job.state)} · ${job.progress}%</p>
     ${job.state==='MANUAL_REVIEW'?'<p>Check Script OCR for available page text and review any unmatched answers.</p>':job.state==='STALE'?'<p>The script changed during assessment. Start a new run.</p>':''}
     ${btn('Refresh Job','refresh-job','',true)}</div>`:'';
 }
@@ -666,11 +696,7 @@ const regionList=()=>answer().regions||(answer().region?[answer().region]:[]);
 async function openRegion(index){
   const regions=regionList(),saved=regions[index];
   const region=saved||{x:0,y:0,width:1,height:1,page:viewerPage??answer().page??1};
-  if(!canSegment()){
-    $('#viewer-page').value=region.page;
-    $('#review-image').src='/api/scripts/'+script().id+'/pages/'+region.page;
-    return;
-  }
+  if(!canSegment()){showPage(region.page);return;}
   const modal=$('#modal');
   modal.innerHTML=`<form id="region-form" data-index="${index}"><h2>${saved?'Edit':'Add'} Answer Region</h2>
     <p class="small muted">Drag across the answer or enter coordinates relative to the page.</p>
@@ -738,10 +764,11 @@ function captureAwards(){
 }
 const sameRegion=(a,b)=>b&&['page','x','y','width','height'].every(key=>Number(a[key])===Number(b[key]));
 function evidenceRegions(item){
-  const manual=item.regions||(item.region?[item.region]:[]);
-  if(manual.length)return manual;
-  const pages=[...new Set(item.ocrJob?.sourceSpans?.map(span=>span.source.page)||[])];
-  return pages.map(page=>({page,x:0,y:0,width:1,height:1}));
+  const regions=[...(item.regions||(item.region?[item.region]:[]))];
+  for(const {source} of item.ocrJob?.sourceSpans||[]){
+    if(!regions.some(region=>sameRegion(region,source)))regions.push(source);
+  }
+  return regions;
 }
 function criterionMarking(item){
   if(item.scoringMode!=='CRITERIA')return '';

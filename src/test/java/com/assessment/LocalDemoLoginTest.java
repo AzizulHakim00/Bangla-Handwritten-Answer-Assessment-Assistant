@@ -54,6 +54,17 @@ class LocalDemoLoginTest {
             .andExpect(status().isBadRequest()).andExpect(unauthenticated());
     }
 
+    @Test void switchingFromTeacherToMarkerReturnsToTheSameReview() throws Exception {
+        var teacher = mvc.perform(post("/login").param("demoRole", "TEACHER").with(csrf()))
+            .andExpect(authenticated().withUsername("teacher@school.local")).andReturn();
+        var session = (MockHttpSession) teacher.getRequest().getSession(false);
+        mvc.perform(post("/login").session(session).param("demoRole", "MARKER").param("reviewScript", "SCR-123").with(csrf()))
+            .andExpect(authenticated().withUsername("marker@school.local"))
+            .andExpect(redirectedUrl("/review?script=SCR-123"));
+        mvc.perform(post("/login").param("demoRole", "MARKER").param("reviewScript", "//example.com").with(csrf()))
+            .andExpect(redirectedUrl("/dashboard"));
+    }
+
     @Test void proxiedAndNonLocalRequestsCannotUseDemoSignIn() throws Exception {
         mvc.perform(get("/login").header("X-Assessment-Proxy", "1")).andExpect(status().isOk())
             .andExpect(content().string(not(containsString("name=\"local-demo-enabled\""))));

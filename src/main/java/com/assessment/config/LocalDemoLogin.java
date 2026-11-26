@@ -8,12 +8,16 @@ import jakarta.servlet.http.HttpServletResponse;
 import java.io.IOException;
 import java.util.List;
 import org.springframework.core.env.Environment;
+import org.springframework.security.core.Authentication;
+import org.springframework.security.web.authentication.AuthenticationSuccessHandler;
+import org.springframework.security.web.authentication.SavedRequestAwareAuthenticationSuccessHandler;
 import org.springframework.security.web.servlet.util.matcher.PathPatternRequestMatcher;
 import org.springframework.web.filter.OncePerRequestFilter;
 
 import static org.springframework.http.HttpMethod.POST;
 
 public final class LocalDemoLogin {
+    private static final String REVIEW_SCRIPT = LocalDemoLogin.class.getName() + ".reviewScript";
     private static final List<String> PROXY_HEADERS = List.of(
         "Forwarded", "X-Forwarded-For", "X-Forwarded-Host", "X-Forwarded-Proto", "X-Assessment-Proxy");
     private final Environment env;
@@ -56,6 +60,10 @@ public final class LocalDemoLogin {
                     response.sendError(HttpServletResponse.SC_BAD_REQUEST);
                     return;
                 }
+                String reviewScript = request.getParameter("reviewScript");
+                if ("MARKER".equals(role) && reviewScript != null && reviewScript.matches("SCR-[A-Za-z0-9_-]{1,80}")) {
+                    request.setAttribute(REVIEW_SCRIPT, reviewScript);
+                }
                 // Keep the role password on the server and use the standard sign-in filter and session handling.
                 String username = InstitutionAccounts.defaultEmail(role, "school");
                 String password = env.getRequiredProperty(role + "_PASSWORD");
@@ -71,5 +79,19 @@ public final class LocalDemoLogin {
                 }, response);
             }
         };
+    }
+
+    AuthenticationSuccessHandler successHandler() {
+        var handler = new SavedRequestAwareAuthenticationSuccessHandler() {
+            @Override
+            protected String determineTargetUrl(HttpServletRequest request, HttpServletResponse response,
+                Authentication authentication) {
+                if (request.getAttribute(REVIEW_SCRIPT) instanceof String script) return "/review?script=" + script;
+                return super.determineTargetUrl(request, response, authentication);
+            }
+        };
+        handler.setDefaultTargetUrl("/dashboard");
+        handler.setAlwaysUseDefaultTargetUrl(true);
+        return handler;
     }
 }

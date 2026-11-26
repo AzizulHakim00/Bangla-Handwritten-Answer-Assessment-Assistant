@@ -74,7 +74,7 @@ public class SecurityConfig {
             .requestMatchers("/moderation").hasRole("MODERATOR")
             .requestMatchers("/exams", "/upload", "/rubrics").hasRole("TEACHER")
             .anyRequest().authenticated())
-            .formLogin(f -> f.loginPage("/login").defaultSuccessUrl("/dashboard", true)
+            .formLogin(f -> f.loginPage("/login").successHandler(localDemoLogin.successHandler())
                 .authenticationDetailsSource(request -> new PilotMfa.Code(request.getParameter("otp"))).permitAll())
             .logout(l -> l.logoutSuccessUrl("/login?logout"))
             .exceptionHandling(e -> e.defaultAuthenticationEntryPointFor(

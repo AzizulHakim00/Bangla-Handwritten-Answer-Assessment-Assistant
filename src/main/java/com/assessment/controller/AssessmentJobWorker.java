@@ -74,7 +74,8 @@ public class AssessmentJobWorker {
             current.put("stepAttempts", attempt + 1);
         });
         var regions = DocumentApi.regions(answer);
-        var extracted = regions.isEmpty() ? ScriptTranscription.forAnswer(ScriptTranscription.pages(script), AssessmentApi.answers(script), question)
+        var extracted = regions.isEmpty() || Boolean.TRUE.equals(job.get("wholeScriptAnswer"))
+            ? ScriptTranscription.forAnswer(ScriptTranscription.pages(script), AssessmentApi.answers(script), question)
             : attempt >= 3 ? Map.<String, Object>of("status", "MANUAL_REVIEW", "candidate", "", "message", OcrWorker.MANUAL, "sourceSpans", List.of())
             : ocr.recognize(script, regions);
         for (int retry = 0; retry < 5; retry++) {

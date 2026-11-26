@@ -106,16 +106,14 @@ public class DocumentApi {
         });
     }
 
+    @SuppressWarnings("unchecked")
     static List<Map<String, Object>> evidenceRegions(Map<String, Object> answer) {
-        var manual = regions(answer);
-        if (!manual.isEmpty()) return manual;
-        var found = new ArrayList<Map<String, Object>>();
+        var found = new ArrayList<>(regions(answer));
         if (answer.get("ocrJob") instanceof Map<?, ?> job && job.get("sourceSpans") instanceof List<?> spans) {
             for (Object raw : spans) {
                 if (((Map<?, ?>) raw).get("source") instanceof Map<?, ?> source) {
-                    int page = ((Number) source.get("page")).intValue();
-                    var region = ScriptTranscription.pageRegion(page);
-                    if (!found.contains(region)) found.add(region);
+                    if (found.stream().noneMatch(region -> ScriptTranscription.sameRegion(region, source)))
+                        found.add((Map<String, Object>) source);
                 }
             }
         }

@@ -56,10 +56,14 @@ public class AssessmentJobs {
             job.put("rubricVersion", rubricVersion);
             job.put("bindingVersion", rubricReference(script));
             int pages = documents.pageCount(script);
-            if (answers.stream().anyMatch(answer -> DocumentApi.regions(answer).isEmpty())) {
-                if (pages > 100) throw DocumentApi.invalid("Automatic OCR supports up to 100 pages. For longer files, select answer regions.");
+            boolean needsPageOcr = answers.stream().anyMatch(answer -> DocumentApi.regions(answer).isEmpty());
+            if (pages <= 100 && (pages > 1 || needsPageOcr)) {
+                boolean questionScoped = script.get("rubricScope") instanceof Number scope && scope.intValue() > 0;
                 job.put("pageCount", pages);
                 job.put("pagesDone", 0);
+                job.put("wholeScriptAnswer", answers.size() == 1 && pages > 1 && !questionScoped);
+            } else if (pages > 100 && needsPageOcr) {
+                throw DocumentApi.invalid("Automatic OCR supports up to 100 pages. For longer files, select answer regions.");
             }
             job.put("modelVersion", OcrWorker.MODEL);
             job.put("inputSha256", ReportService.hex(ArtifactSigner.canonical(Map.of(

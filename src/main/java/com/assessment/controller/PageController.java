@@ -17,13 +17,13 @@ public class PageController {
         this.localDemoLogin = localDemoLogin;
     }
 
-    @GetMapping("/login")
-    public String login(Model model, HttpServletRequest request) {
+    @GetMapping({"/login", "/review"})
+    public String loginOrReview(Model model, HttpServletRequest request) {
         model.addAttribute("authenticatorEnabled", mfa.hasConfiguredAccounts());
         model.addAttribute("localDemoEnabled", localDemoLogin.available(request));
         return "app";
     }
 
-    @GetMapping({"/", "/dashboard", "/exams", "/rubrics", "/scripts", "/upload", "/review", "/moderation", "/reports", "/profile", "/verify"})
+    @GetMapping({"/", "/dashboard", "/exams", "/rubrics", "/scripts", "/upload", "/moderation", "/reports", "/profile", "/verify"})
     public String page() { return "app"; }
 }

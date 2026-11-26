@@ -22,5 +22,8 @@ function renderLoginWithFlag(name) {
 renderLoginWithFlag('authenticator-enabled');
 assert(app.innerHTML.includes('name="otp"'), 'Configured sign-in should show the authenticator field');
 renderLoginWithFlag('local-demo-enabled');
-for (const role of ['TEACHER', 'MARKER', 'MODERATOR']) assert(app.innerHTML.includes('name="demoRole" value="' + role + '"'));
-for (const field of ['username', 'password', 'otp']) assert(!app.innerHTML.includes('name="' + field + '"'));
+const demoForm = app.innerHTML.match(/<form id="demo-login-form"[\s\S]*?<\/form>/)?.[0];
+assert(demoForm, 'Login should show the demo form');
+for (const role of ['TEACHER', 'MARKER', 'MODERATOR']) assert(demoForm.includes('name="demoRole" value="' + role + '"'));
+for (const field of ['username', 'password', 'otp']) assert(!demoForm.includes('name="' + field + '"'));
+assert(app.innerHTML.includes('<details class="login-account">'), 'School account login should start collapsed');

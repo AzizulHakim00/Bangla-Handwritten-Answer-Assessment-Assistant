@@ -54,4 +54,8 @@
 .login-card .input-icon button:focus-visible{outline-offset:0}
 
 .login-demo-roles{display:grid;gap:12px}
-.login-demo-roles .button{width:100%;justify-content:center}
+.login-card .login-demo-roles>.button{margin:0;justify-content:space-between}
+.login-account{margin-top:20px;padding-top:16px;border-top:1px solid var(--border)}
+.login-account>summary{color:var(--purple);font-size:14px;font-weight:600;cursor:pointer}
+.login-account[open]>summary{margin-bottom:16px}
+.login-account>.text-button{display:block;margin:18px auto 0}

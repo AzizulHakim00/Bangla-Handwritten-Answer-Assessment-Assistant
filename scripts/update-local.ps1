@@ -56,7 +56,7 @@ $loaded = $false
 for ($attempt = 0; $attempt -lt 30; $attempt++) {
     try {
         $page = Invoke-WebRequest -Uri $url -UseBasicParsing -TimeoutSec 3
-        if ($page.Content -match '\?v=2026\.11\.26-r3\.3"') { $loaded = $true; break }
+        if ($page.Content -match '\?v=2026\.11\.26-r3\.4"') { $loaded = $true; break }
     } catch {
         Start-Sleep -Seconds 2
         continue
@@ -64,5 +64,5 @@ for ($attempt = 0; $attempt -lt 30; $attempt++) {
     Start-Sleep -Seconds 2
 }
 if (-not $loaded) { throw "The new build did not respond at $url. Check docker compose logs --tail 80 app worker mongo." }
-Write-Host "Open $url and check for Build 2026.11.26-r3.3."
+Write-Host "Open $url and check for Build 2026.11.26-r3.4."
 if ($FollowLogs) { Invoke-Compose logs --tail 80 -f app worker }

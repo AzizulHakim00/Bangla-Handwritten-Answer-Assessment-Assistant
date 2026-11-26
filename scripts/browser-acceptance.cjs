@@ -13,9 +13,14 @@ async function signIn(browser, role, mobile = false) {
   await page.route('https://fonts.googleapis.com/**', removeFonts);
   await page.route('https://fonts.gstatic.com/**', removeFonts);
   await page.goto(base + '/login');
-  await page.getByRole('textbox', { name: 'Email address' }).fill(role + '@school.local');
-  await page.locator('[name=password]').fill(process.env[role.toUpperCase() + '_PASSWORD']);
-  await page.getByRole('button', { name: 'Sign In' }).click();
+  const demoButton = page.getByRole('button', { name: new RegExp('^Demo ' + role + '$', 'i') });
+  if (await demoButton.isVisible()) {
+    await demoButton.click();
+  } else {
+    await page.getByRole('textbox', { name: 'Email address' }).fill(role + '@school.local');
+    await page.locator('[name=password]').fill(process.env[role.toUpperCase() + '_PASSWORD']);
+    await page.getByRole('button', { name: 'Sign In', exact: true }).click();
+  }
   await page.waitForURL('**/dashboard');
   await page.getByRole('heading', { name: new RegExp('Welcome, ' + role, 'i') }).waitFor();
   return page;

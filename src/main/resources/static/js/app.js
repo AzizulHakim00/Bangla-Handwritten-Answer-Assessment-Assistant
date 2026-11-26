@@ -5,7 +5,7 @@ const icon=(n,cls='')=>`<svg class="icon ${cls}" viewBox="0 0 24 24" fill="none"
 const logo=`<svg class="logo" viewBox="0 0 60 52" aria-hidden="true"><path fill="currentColor" d="M1 15 30 4l29 11-29 11Z"/><path d="M9 22v18c9-1 15 2 21 7 6-5 12-8 21-7V22M4 18v15" fill="none" stroke="currentColor" stroke-width="4"/><path d="m17 26 13 5 13-5v9c-5 0-9 2-13 5-4-3-8-5-13-5Z" fill="currentColor"/></svg>`;
 let state={exams:[],scripts:[],criteria:[],version:0};
 const routeParams=new URLSearchParams(location.search);
-const release='2026.11.26-r3';
+const release='2026.11.26-r3.1';
 const knownPageCounts=new Map();
 const pageCount=record=>record.pages||knownPageCounts.get(record.id)||(record.mime==='application/pdf'?500:1);
 const canRebind=record=>record.status==='To Review'&&!(record.answers||[record]).some(item=>
@@ -267,7 +267,39 @@ function verifyPage(){
     <div class="form-actions"><button class="button">${icon('shield')} Verify Bundle</button></div>
     <p id="verify-result" role="status"></p></form></section>`,'Verify');
 }
-function login(){return `<div class="login-page"><div class="login-brand">${logo}<h1>Answer Assessment<br>Assistant</h1><p>Bangla Handwritten Answer<br>Assessment for Schools<br>and Examinations</p><div class="books"><div></div><div></div><div></div></div><span class="plant">☘</span></div><section class="login-card"><h1>Sign In</h1><p>Access your academic assessment account</p><form id="login-form" action="/login" method="post"><input type="hidden" name="_csrf" value="${esc(document.querySelector('meta[name=csrf-token]')?.content||'')}"><label class="input-icon">${icon('mail')}<input type="email" name="username" placeholder="Email address" aria-label="Email address" required></label><label class="input-icon">${icon('lock')}<input id="password" name="password" type="password" minlength="4" placeholder="Password" aria-label="Password" required><button type="button" class="icon-button" data-action="toggle-password" aria-label="Show password">${icon('eye')}</button></label><label>Authenticator code (if assigned)<input name="otp" autocomplete="one-time-code" inputmode="numeric" pattern="[0-9]{6}" maxlength="6"></label><button class="button" type="submit">Sign In ${icon('arrow')}</button></form><button class="text-button" data-action="forgot">Forgot password?</button><p class="small muted">Use your school account to sign in. · Build ${release}</p></section></div>`}
+function login(){
+  return `<div class="login-page">
+    <div class="login-brand">
+      ${logo}
+      <h1>Answer Assessment<br>Assistant</h1>
+      <p>Bangla Handwritten Answer<br> Assessment for Schools<br> and Examinations</p>
+      <div class="books"><div></div><div></div><div></div></div><span class="plant">☘</span>
+    </div>
+    <section class="login-card">
+      <h1>Sign In</h1>
+      <p>Access your academic assessment account</p>
+      <form id="login-form" action="/login" method="post">
+        <input type="hidden" name="_csrf" value="${esc(document.querySelector('meta[name=csrf-token]')?.content||'')}">
+        <label for="login-email">Email address</label>
+        <div class="input-icon">
+          ${icon('mail')}
+          <input id="login-email" name="username" type="email" autocomplete="username" autocapitalize="none" spellcheck="false" required>
+        </div>
+        <label for="password">Password</label>
+        <div class="input-icon">
+          ${icon('lock')}
+          <input id="password" name="password" type="password" autocomplete="current-password" minlength="4" required>
+          <button type="button" class="icon-button" data-action="toggle-password" aria-controls="password" aria-label="Show password">${icon('eye')}</button>
+        </div>
+        <label for="login-otp">Authenticator code (if assigned)</label>
+        <input id="login-otp" name="otp" autocomplete="one-time-code" inputmode="numeric" pattern="[0-9]{6}" maxlength="6">
+        <button class="button" type="submit">Sign In ${icon('arrow')}</button>
+      </form>
+      <button class="text-button" data-action="forgot">Forgot password?</button>
+      <p class="small muted">Use your school account to sign in. · Build ${release}</p>
+    </section>
+  </div>`;
+}
 function profile(){return shell(`${heading('Your Profile','Manage your assessment workspace.')}<section class="panel narrow"><div class="profile-avatar">T</div><h2>${esc(state.user||"School account")}</h2><p class="muted">${esc(state.role||"")} · Academic assessment workspace</p><div class="form-actions">${btn('Sign Out','logout','',true)}</div></section>`,'')}
 function render(){const p=location.pathname;$('#app').innerHTML=({'/login':login,'/rubrics':rubrics,'/review':review,'/exams':exams,'/scripts':scripts,'/upload':upload,'/moderation':moderation,'/reports':reports,'/profile':profile,'/verify':verifyPage}[p]||dashboard)();document.title=(`${p.slice(1)||'Dashboard'} · Answer Assessment Assistant`);if(p==='/review'&&!writable()){document.querySelectorAll('#review-form input,#review-form textarea,#ocr-text').forEach(el=>el.disabled=true)}}
 async function api(path,body,extraHeaders={}){
@@ -443,7 +475,13 @@ document.addEventListener('click',async event=>{
     switch(target.dataset.action){
       case 'create-exam': createExam();break;
       case 'close-modal': $('#modal').close();break;
-      case 'toggle-password': $('#password').type=$('#password').type==='password'?'text':'password';break;
+      case 'toggle-password': {
+        const password = $('#password');
+        const showPassword = password.type === 'password';
+        password.type = showPassword ? 'text' : 'password';
+        target.setAttribute('aria-label', showPassword ? 'Hide password' : 'Show password');
+        break;
+      }
       case 'forgot': toast('Contact your institutional account operator.');break;
       case 'notifications': toast(`${state.scripts.filter(s=>s.status==='To Review').length} scripts are waiting for review.`);break;
       case 'add-criterion': $('#criteria').insertAdjacentHTML('beforeend',criterion({text:'',marks:1},$('#criteria').children.length));updateTotal();break;

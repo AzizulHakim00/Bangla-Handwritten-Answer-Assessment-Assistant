@@ -40,3 +40,15 @@
   .scripts-table td,.scripts-table td:last-child{display:block;width:auto;padding:.3rem .5rem;border:0}
   .scripts-table td::before{content:attr(data-label);display:block;font-size:.7rem;color:var(--muted)}
 }
+
+.login-card label{margin-bottom:7px}
+.login-card #login-otp{margin:0 0 16px}
+.login-card .input-icon input{flex:1;min-width:0}
+.login-card .input-icon>.icon,.login-card .input-icon>button{flex:none}
+.login-card .input-icon:has(input:focus),.login-card #login-otp:focus{
+  outline:2px solid var(--purple);
+  outline-offset:-1px;
+  box-shadow:none;
+}
+.login-card .input-icon input:focus{outline:none;box-shadow:none}
+.login-card .input-icon button:focus-visible{outline-offset:0}

@@ -16,7 +16,7 @@ import org.springframework.core.env.Environment;
 import org.springframework.security.authentication.BadCredentialsException;
 import org.springframework.security.core.CredentialsContainer;
 
-final class PilotMfa {
+public final class PilotMfa {
     private final Map<String, byte[]> secrets;
     private final Map<String, Long> lastUse = new ConcurrentHashMap<>();
     private final Clock clock;
@@ -41,6 +41,10 @@ final class PilotMfa {
             if (!env.getProperty("ASSESSMENT_SECURE_COOKIES", Boolean.class, false))
                 throw new IllegalStateException("Pilot mode requires secure session cookies");
         }
+    }
+
+    public boolean hasConfiguredAccounts() {
+        return !secrets.isEmpty();
     }
 
     static final class Code implements CredentialsContainer, java.io.Serializable {

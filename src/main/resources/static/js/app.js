@@ -5,7 +5,8 @@ const icon=(n,cls='')=>`<svg class="icon ${cls}" viewBox="0 0 24 24" fill="none"
 const logo=`<svg class="logo" viewBox="0 0 60 52" aria-hidden="true"><path fill="currentColor" d="M1 15 30 4l29 11-29 11Z"/><path d="M9 22v18c9-1 15 2 21 7 6-5 12-8 21-7V22M4 18v15" fill="none" stroke="currentColor" stroke-width="4"/><path d="m17 26 13 5 13-5v9c-5 0-9 2-13 5-4-3-8-5-13-5Z" fill="currentColor"/></svg>`;
 let state={exams:[],scripts:[],criteria:[],version:0};
 const routeParams=new URLSearchParams(location.search);
-const release='2026.11.26-r3.1';
+const release='2026.11.26-r3.2';
+const authenticatorEnabled=document.querySelector('meta[name=authenticator-enabled]')?.content==='true';
 const knownPageCounts=new Map();
 const pageCount=record=>record.pages||knownPageCounts.get(record.id)||(record.mime==='application/pdf'?500:1);
 const canRebind=record=>record.status==='To Review'&&!(record.answers||[record]).some(item=>
@@ -291,8 +292,8 @@ function login(){
           <input id="password" name="password" type="password" autocomplete="current-password" minlength="4" required>
           <button type="button" class="icon-button" data-action="toggle-password" aria-controls="password" aria-label="Show password">${icon('eye')}</button>
         </div>
-        <label for="login-otp">Authenticator code (if assigned)</label>
-        <input id="login-otp" name="otp" autocomplete="one-time-code" inputmode="numeric" pattern="[0-9]{6}" maxlength="6">
+        ${authenticatorEnabled ? `<label for="login-otp">Authenticator code (if assigned)</label>
+        <input id="login-otp" name="otp" autocomplete="one-time-code" inputmode="numeric" pattern="[0-9]{6}" maxlength="6">` : ''}
         <button class="button" type="submit">Sign In ${icon('arrow')}</button>
       </form>
       <button class="text-button" data-action="forgot">Forgot password?</button>
@@ -625,7 +626,12 @@ document.addEventListener('submit',async event=>{
     }
   }catch(error){if(form.id==='verify-form')$('#verify-result').textContent=error.message;toast(error.message)}
 });
-if(location.pathname==='/login'){render();if(location.search.includes('error'))toast('Check your sign-in details and any required authenticator code.')}else refresh().then(()=>{
+if(location.pathname==='/login'){
+  render();
+  if(location.search.includes('error')){
+    toast(authenticatorEnabled ? 'Check your sign-in details and any required authenticator code.' : 'Check your email address and password.');
+  }
+}else refresh().then(()=>{
   if(location.pathname==='/review')loadLegacyPageCount().catch(error=>toast(error.message));
   scheduleReviewPoll();if(location.pathname==='/exams'&&location.search.includes('create=1'))createExam()}).catch(err=>{$('#app').innerHTML='<main><h1>Workspace unavailable</h1><p>'+esc(err.message)+'</p><a href="/login">Sign in</a></main>'});
 

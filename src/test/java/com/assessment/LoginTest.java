@@ -8,6 +8,8 @@ import org.springframework.boot.test.autoconfigure.web.servlet.WebMvcTest;
 import org.springframework.context.annotation.Import;
 import org.springframework.test.context.TestPropertySource;
 import org.springframework.test.web.servlet.MockMvc;
+import static org.hamcrest.Matchers.containsString;
+import static org.hamcrest.Matchers.not;
 import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestBuilders.formLogin;
 import static org.springframework.security.test.web.servlet.response.SecurityMockMvcResultMatchers.*;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
@@ -28,6 +30,23 @@ class LoginTest {
             .andExpect(unauthenticated()).andExpect(redirectedUrl("/login?error"));
     }
     @Test void anonymousUserGetsCustomLoginPage() throws Exception {
-        mvc.perform(get("/login")).andExpect(status().isOk()).andExpect(view().name("app"));
+        mvc.perform(get("/login")).andExpect(status().isOk()).andExpect(view().name("app"))
+            .andExpect(content().string(not(containsString("name=\"authenticator-enabled\""))));
+    }
+}
+
+@WebMvcTest(PageController.class)
+@Import(SecurityConfig.class)
+@TestPropertySource(properties={"TEACHER_PASSWORD=teacher-test-password","MARKER_PASSWORD=marker-test-password",
+    "MODERATOR_PASSWORD=moderator-test-password",
+    "ASSESSMENT_MFA_SECRETS_JSON={\"teacher@school.local\":\"MTIzNDU2Nzg5MDEyMzQ1Njc4OTA=\"}"})
+class AuthenticatorLoginTest {
+    @Autowired MockMvc mvc;
+
+    @Test void configuredAuthenticatorIsVisibleAndEnforced() throws Exception {
+        mvc.perform(get("/login")).andExpect(status().isOk())
+            .andExpect(content().string(containsString("<meta name=\"authenticator-enabled\" content=\"true\">")));
+        mvc.perform(formLogin("/login").user("teacher@school.local").password("teacher-test-password"))
+            .andExpect(unauthenticated()).andExpect(redirectedUrl("/login?error"));
     }
 }

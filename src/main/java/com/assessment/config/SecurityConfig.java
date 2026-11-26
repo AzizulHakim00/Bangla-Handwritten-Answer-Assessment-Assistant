@@ -32,9 +32,11 @@ public class SecurityConfig {
         }
         return users;
     }
-    @Bean DaoAuthenticationProvider institutionalLogin(UserDetailsService users, BCryptPasswordEncoder encoder,
-        Environment env, InstitutionAccounts accounts) throws java.io.IOException {
-        var mfa = new PilotMfa(env, accounts);
+    @Bean PilotMfa pilotMfa(Environment env, InstitutionAccounts accounts) throws java.io.IOException {
+        return new PilotMfa(env, accounts);
+    }
+
+    @Bean DaoAuthenticationProvider institutionalLogin(UserDetailsService users, BCryptPasswordEncoder encoder, PilotMfa mfa) {
         var provider = new DaoAuthenticationProvider(users) {
             @Override
             protected void additionalAuthenticationChecks(UserDetails user, UsernamePasswordAuthenticationToken auth) {

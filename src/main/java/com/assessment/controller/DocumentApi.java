@@ -90,11 +90,14 @@ public class DocumentApi {
         return workspaces.change(r.version, w -> {
             var script = WorkspaceService.script(w, id);
             editable(script);
+            if (AssessmentJobs.running(w, script)) {
+                throw new ResponseStatusException(HttpStatus.CONFLICT, "Wait for the script assessment to finish before running region OCR.");
+            }
             var answer = answer(script, r.question);
             var regions = regions(answer);
             if (regions.isEmpty()) throw invalid("Save an answer region before starting OCR");
             if (answer.get("ocrJob") instanceof Map<?, ?> job) {
-                if (List.of("PENDING", "RUNNING").contains(job.get("status"))) return;
+                if (AssessmentJobs.active(job.get("status"))) return;
                 preserveOcr(answer, job);
             }
             var job = new LinkedHashMap<String, Object>(Map.of("id", UUID.randomUUID().toString(), "status", "PENDING",

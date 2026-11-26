@@ -32,6 +32,34 @@ async function artifact(page, button) {
   return download.path();
 }
 
+async function testRubricEligibility(teacher, key) {
+  const token = await (await teacher.request.get(base + '/api/csrf')).json();
+  async function save(path, fields) {
+    const workspace = await (await teacher.request.get(base + '/api/workspace')).json();
+    const response = await teacher.request.post(base + path, {
+      headers: { [token.headerName]: token.token }, data: { ...fields, version: workspace.version }
+    });
+    assert.ok(response.ok(), await response.text());
+    return response.json();
+  }
+  const details = { name: 'Mixed maxima ' + key, subject: 'Bangla', reference: 'MIX-' + key,
+    date: '2026-11-25', questions: 2, items: [{ description: 'First question', maximum: 10 }, { description: 'Second question', maximum: 10 }] };
+  const exams = await save('/api/exams', details);
+  const exam = exams.exams.find(item => item.reference === 'MIX-' + key).id;
+  await save('/api/rubrics', { exam, question: 0, criteria: [{ text: 'Default criterion', marks: 10 }] });
+  details.items[1].maximum = 5;
+  await save('/api/exams/' + exam, details);
+  await teacher.goto(base + '/upload?exam=' + exam);
+  const options = teacher.locator('select[name=rubricScope] option');
+  await options.filter({ hasText: 'Question 1 only' }).waitFor({ state: 'attached' });
+  assert.equal(await options.filter({ hasText: 'Question 2 only' }).count(), 0);
+  assert.equal(await options.filter({ hasText: 'Whole exam' }).count(), 0);
+  await save('/api/rubrics', { exam, question: 2, criteria: [{ text: 'Second criterion', marks: 5 }] });
+  await teacher.reload();
+  await options.filter({ hasText: 'Whole exam' }).waitFor({ state: 'attached' });
+  await options.filter({ hasText: 'Question 2 only' }).waitFor({ state: 'attached' });
+}
+
 async function main() {
   const browser = await chromium.launch(process.env.CHROMIUM_PATH ? { executablePath: process.env.CHROMIUM_PATH } : {});
   try {
@@ -95,6 +123,16 @@ async function main() {
     const marker = await signIn(browser, 'marker');
     await marker.goto(base + review);
     await marker.getByRole('heading', { name: 'Review & Assess Answer' }).waitFor();
+    assert.ok(await marker.locator('.workbench').evaluate(el =>
+      el.querySelector('.document').getBoundingClientRect().right <= el.querySelector('.transcription').getBoundingClientRect().left));
+    await marker.waitForFunction(() => document.querySelector('#review-image')?.naturalWidth > 0);
+    await marker.locator('#review-image').evaluate(image => window.acceptanceOriginalPage = image);
+    await marker.getByRole('tab', { name: 'Rubric & Score' }).click();
+    await marker.getByRole('tab', { name: 'OCR Text' }).click();
+    assert.ok(await marker.locator('#review-image').evaluate(image => image === window.acceptanceOriginalPage));
+    await marker.getByRole('button', { name: 'Expand answer' }).click();
+    assert.equal(await marker.locator('.document').evaluate(el => getComputedStyle(el).position), 'fixed');
+    await marker.getByRole('button', { name: 'Expand answer' }).click();
     await marker.getByRole('button', { name: 'Add Answer Region' }).click();
     await marker.waitForFunction(() => document.querySelector('#modal')?.dataset.loadedPage === '1');
     await marker.getByRole('button', { name: 'Save Region' }).click();
@@ -127,8 +165,21 @@ async function main() {
     assert.equal(current.criteria[0].score, 10);
     await marker.locator('.suggestion-list').getByText(/10 suggested marks/).waitFor();
     await marker.getByLabel('Updated photosynthesis definition · Max 10').fill('6.25');
+    await marker.getByRole('button', { name: 'Save Question' }).click();
+    await marker.locator('#review-feedback').getByText('Positive marks need an exact excerpt', { exact: false }).waitFor();
     await marker.getByLabel('Supporting excerpt').fill('সালোকসংশ্লেষণ');
     await marker.getByLabel('Remarks').fill('Definition provided with partial explanation.');
+    const teacherWorkspace = await (await teacher.request.get(base + '/api/workspace')).json();
+    const exam = teacherWorkspace.exams.find(record => record.name === examName);
+    const csrf = await (await teacher.request.get(base + '/api/csrf')).json();
+    const republished = await teacher.request.post(base + '/api/rubrics', { headers: { [csrf.headerName]: csrf.token },
+      data: { version: teacherWorkspace.version, exam: exam.id, question: 1,
+        criteria: [{ text: 'Future uploads only', marks: 10 }] } });
+    assert.ok(republished.ok(), await republished.text());
+    await marker.getByRole('button', { name: 'Save Question' }).click();
+    await marker.locator('#review-feedback').getByText(/Your draft is still here/).waitFor();
+    assert.equal(await marker.getByLabel('Updated photosynthesis definition · Max 10').inputValue(), '6.25');
+    assert.equal(await marker.getByLabel('Supporting excerpt').inputValue(), 'সালোকসংশ্লেষণ');
     await marker.getByRole('button', { name: 'Submit All Questions' }).click();
     await marker.getByText('Submitted for moderation.', { exact: true }).waitFor();
 
@@ -154,6 +205,11 @@ async function main() {
     }));
     assert.ok(widths.rendered <= widths.page + 1, 'Mobile review has horizontal page overflow');
     assert.equal(await mobile.getByRole('button', { name: 'Submit All Questions' }).count(), 0);
+    assert.ok(await mobile.locator('.workbench').evaluate(el =>
+      el.querySelector('.document').getBoundingClientRect().bottom <= el.querySelector('.transcription').getBoundingClientRect().top));
+    assert.ok(await mobile.locator('.review-main').evaluate(el =>
+      el.querySelector('.transcription').getBoundingClientRect().bottom <= el.querySelector('.decision').getBoundingClientRect().top));
+    await testRubricEligibility(teacher, key);
     console.log('Passed Chromium desktop and mobile workflow, isolated OCR, decimal marking, and signed bundle verification.');
   } finally {
     await browser.close();

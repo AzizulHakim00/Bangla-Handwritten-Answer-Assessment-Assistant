@@ -36,7 +36,7 @@ git pull --ff-only origin main
 powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\update-local.ps1
 ```
 
-The updater keeps existing passwords, generates a missing worker token, builds both images, and adjusts the old scripts volume's file ownership. Open [http://localhost:8085/login](http://localhost:8085/login) and confirm **Build 2026.11.26-r3.5**. The Scripts table shows the actual exam, rubric revision, and available actions. Use **Change Exam / Rubric** to correct an existing upload while it is still **To Review**. Teachers configure exams and rubrics, and the assigned marker runs OCR and assessment.
+The updater keeps existing passwords, generates a missing worker token, builds both images, and adjusts the old scripts volume's file ownership. Open [http://localhost:8085/login](http://localhost:8085/login) and confirm **Build 2026.11.27-r4**. The Scripts table shows the actual exam, rubric revision, and available actions. Use **Change Exam / Rubric** to correct an existing upload while it is still **To Review**. Teachers configure exams and rubrics, and the assigned marker runs OCR and assessment.
 
 ## Complete an assessment
 

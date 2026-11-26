@@ -37,11 +37,11 @@ public class AssessmentJobs {
             DocumentApi.editable(script);
             if (!rubricReference(script).equals(rubricVersion) && !uniformRubric(script, rubricVersion))
                 throw new ResponseStatusException(HttpStatus.CONFLICT, "Rubric version does not match the uploaded script");
-            if (workspace.jobs.stream().anyMatch(job -> scriptId.equals(job.get("scriptId")) &&
-                rubricReference(script).equals(job.get("bindingVersion")) &&
-                List.of("PENDING", "RUNNING").contains(job.get("status"))))
+            if (running(workspace, script))
                 throw new ResponseStatusException(HttpStatus.CONFLICT, "An assessment is already running for this script.");
             var answers = AssessmentApi.answers(script);
+            if (answers.stream().anyMatch(answer -> answer.get("ocrJob") instanceof Map<?, ?> ocr && active(ocr.get("status"))))
+                throw new ResponseStatusException(HttpStatus.CONFLICT, "Wait for the region OCR to finish before assessing the script.");
             var inputs = new ArrayList<Map<String, Object>>();
             for (var answer : answers) {
                 inputs.add(Map.of("question", answer.get("question"), "hash", fingerprint(answer)));
@@ -98,6 +98,15 @@ public class AssessmentJobs {
 
     public static String rubricReference(Map<String, Object> script) {
         return Objects.toString(script.get("rubricSetVersion"), "legacy");
+    }
+
+    static boolean running(Workspace workspace, Map<String, Object> script) {
+        return workspace.jobs.stream().anyMatch(job -> script.get("id").equals(job.get("scriptId"))
+            && rubricReference(script).equals(job.get("bindingVersion")) && active(job.get("status")));
+    }
+
+    static boolean active(Object status) {
+        return "PENDING".equals(status) || "RUNNING".equals(status);
     }
 
     private static boolean uniformRubric(Map<String, Object> script, String version) {

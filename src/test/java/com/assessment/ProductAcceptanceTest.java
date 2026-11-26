@@ -90,6 +90,8 @@ class ProductAcceptanceTest {
         String idem = "accept-" + suffix;
         var spec = Map.of("script_id", id, "rubric_version", rubricSet);
         String job = parse(start(marker, spec, idem).andExpect(status().isAccepted())).path("job_id").asText();
+        posted("/api/scripts/" + id + "/ocr", marker, Map.of("version", version(marker), "question", 1))
+            .andExpect(status().isConflict());
         start(marker, spec, idem).andExpect(status().isAccepted()).andExpect(jsonPath("$.job_id").value(job));
         start(marker, Map.of("script_id", id, "rubric_version", "different"), idem).andExpect(status().isConflict());
         mvc.perform(get("/api/v1/jobs/" + job).with(unassigned)).andExpect(status().isNotFound());

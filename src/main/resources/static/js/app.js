@@ -5,7 +5,7 @@ const icon=(n,cls='')=>`<svg class="icon ${cls}" viewBox="0 0 24 24" fill="none"
 const logo=`<svg class="logo" viewBox="0 0 60 52" aria-hidden="true"><path fill="currentColor" d="M1 15 30 4l29 11-29 11Z"/><path d="M9 22v18c9-1 15 2 21 7 6-5 12-8 21-7V22M4 18v15" fill="none" stroke="currentColor" stroke-width="4"/><path d="m17 26 13 5 13-5v9c-5 0-9 2-13 5-4-3-8-5-13-5Z" fill="currentColor"/></svg>`;
 let state={exams:[],scripts:[],criteria:[],version:0};
 const routeParams=new URLSearchParams(location.search);
-const release='2026.11.26-r3.5';
+const release='2026.11.27-r4';
 const authenticatorEnabled=document.querySelector('meta[name=authenticator-enabled]')?.content==='true';
 const localDemoEnabled=document.querySelector('meta[name=local-demo-enabled]')?.content==='true';
 const knownPageCounts=new Map();
@@ -89,6 +89,7 @@ function rubrics(){
   const inherited=rubricQuestion>0&&!active&&exam.rubricPointers?.[0];
   state.criteria=(rubricQuestion?exam.questionRubrics?.[rubricQuestion]:null)||exam.criteria||[];
   const max=exam.items?.[rubricQuestion-1]?.maximum;
+  const mismatched=max!=null&&state.criteria.length>0&&sumMarks(state.criteria.map(c=>c.marks))!==Number(max);
   const editableCriteria=state.criteria.length?state.criteria:[{text:'',marks:max&&max<=100?max:1}];
   const versions=(state.rubricHistory||[]).filter(r=>r.exam===exam.id&&(r.question===rubricQuestion||r.question===0));
   return shell(`${heading('Publish Rubric','Set criterion marks and evidence hints for each question.')}
@@ -98,7 +99,7 @@ function rubrics(){
         <label>Question<select name="rubricQuestion"><option value="0" ${rubricQuestion===0?'selected':''}>Default for all questions</option>${Array.from({length:exam.questions},(_,i)=>`<option value="${i+1}" ${rubricQuestion===i+1?'selected':''}>Question ${i+1}</option>`).join('')}</select></label>
       </div>
       ${max!==undefined?`<p class="notice">${esc(exam.items[rubricQuestion-1].description)} · Question maximum ${max}</p>`:''}
-      <p class="notice" role="status">${active?'Saved rubric · '+esc(active):inherited?'Using the exam default. Save to create a question-specific rubric.':'This rubric has no published version.'}</p>
+      <p class="notice" role="status">${mismatched?'Update and publish the criterion marks to match this question maximum.':active?'Saved rubric · '+esc(active):inherited?'Using the exam default. Save to create a question-specific rubric.':'This rubric has no published version.'}</p>
       <div class="section-heading"><h2>Scoring Criteria</h2><span class="muted">Total <strong id="rubric-total">${sumMarks(editableCriteria.map(c=>c.marks))}</strong> marks</span></div>
       <div id="criteria">${editableCriteria.map(criterion).join('')}</div>
       <button type="button" class="text-button" data-action="add-criterion">${icon('plus')} Add Criterion</button>
@@ -125,22 +126,15 @@ async function loadLegacyPageCount(){
   render();
   if(draft&&writable())restoreDraft(draft);
 }
-function reviewControls(parent, regions){
-  if(writable()){
-    const running=activeStatus(jobFor(parent)?.state);
-    return `<div class="review-controls">
-      <button class="button" data-action="assess-script" ${running?'disabled':''}>${icon('layers')} Auto OCR &amp; Assess</button>
-      ${regions.length?btn('Run Region OCR','run-ocr','file',true):''}${btn('Add Answer Region','select-region','expand',true)}
-      ${btn('Save Question','save-draft','save',true)}${btn('Submit All Questions','submit-review','arrow',true)}
-    </div>`;
-  }
+function reviewControls(parent){
+  if(writable())return '';
   if(!editable()){
     return `<p class="notice">${parent.status==='Approved'?'The marks have been approved.':'The marks are awaiting moderation.'}${moderator()&&parent.status==='Pending Moderation'?' <a href="/moderation">Open moderation</a>':''}</p>`;
   }
   if(!teacher())return '<p class="notice">The assigned marker can run OCR and submit marks for moderation.</p>';
   const demoAssignment=parent.marker==='marker@school.local'||(!Object.hasOwn(parent,'marker')&&!Object.hasOwn(parent,'tenant'));
   const switchToMarker=localDemoEnabled&&demoAssignment;
-  return `<div class="notice review-access"><p><strong>Teacher view.</strong> The assigned marker runs OCR, edits the transcription, and submits marks.${parent.marker?' Assigned to '+esc(parent.marker)+'.':''}</p>
+  return `<div class="review-access"><p><strong>Teacher view</strong>${parent.marker?' · '+esc(parent.marker):''}</p>
     <div class="review-controls">
       ${switchToMarker?`<form id="demo-login-form" action="/login" method="post">
         ${csrfField()}<input type="hidden" name="reviewScript" value="${esc(parent.id)}">
@@ -148,7 +142,6 @@ function reviewControls(parent, regions){
       </form>`:''}
       <button class="button secondary" data-assignment="${esc(parent.id)}">Assign Script</button>
       ${canRebind(parent)?`<button class="button secondary" data-binding="${esc(parent.id)}">Change Exam / Rubric</button>`:''}
-      ${canSegment()?btn('Add Answer Region','select-region','expand',true):''}
     </div></div>`;
 }
 function review(){
@@ -159,41 +152,53 @@ function review(){
   const regions=item.regions||(item.region?[item.region]:[]);
   const shownPage=viewerPage??item.ocrJob?.sourceSpans?.[0]?.source.page??s.page??1;
   const pages=pageCount(parent);
+  const assessing=activeStatus(jobFor(parent)?.state);
+  const regionOcr=hasRegionOcr(parent);
   state.criteria=item.criteria||[];
   const score=item.score??'';
   return shell(`<div class="review-heading"><a class="icon-button" href="/scripts" aria-label="Back to scripts">${icon('back')}</a><h1>Review &amp; Assess Answer</h1>
     <div>${esc(parent.candidateToken||parent.id)} <span class="divider">|</span> ${parent.rubricScope===0?'Default rubric · Entire script':`Question <strong>${item.examQuestion||question}${parent.rubricScope>0?'':' / '+(parent.answers?.length||1)}</strong>`} · ${examName(parent.exam)}</div>
     <button class="icon-button" data-action="prev-question" aria-label="Previous question" ${question<=1?'disabled':''}>${icon('back')}</button>
     <button class="icon-button" data-action="next-question" aria-label="Next question" ${question>=(parent.answers?.length||1)?'disabled':''}>${icon('chevron')}</button></div>
-    ${reviewControls(parent, regions)}
-    ${assessmentJobPanel(parent)}
+    ${reviewControls(parent)}
     <section class="panel workbench"><div class="document">
-      <div class="viewer-toolbar"><label>Original page <input id="viewer-page" type="number" min="1" max="${pages}" value="${shownPage}"></label>
+      <div class="viewer-toolbar">
+      <button class="icon-button" data-action="prev-page" aria-label="Previous Page" ${shownPage<=1?'disabled':''}>${icon('back')}</button>
+      <label>Page <input id="viewer-page" type="number" min="1" max="${pages}" value="${shownPage}"></label>
       <span class="muted">of ${parent.pages||knownPageCounts.get(parent.id)||(parent.mime==='application/pdf'?'…':1)}</span>
-      <button class="button secondary" data-action="prev-page" ${shownPage<=1?'disabled':''}>Previous Page</button>
-      <button class="button secondary" data-action="next-page" ${shownPage>=pages?'disabled':''}>Next Page</button>
+      <button class="icon-button" data-action="next-page" aria-label="Next Page" ${shownPage>=pages?'disabled':''}>${icon('chevron')}</button>
       <button class="icon-button" data-action="expand" aria-label="Expand answer">${icon('expand')}</button></div>
-      <div class="paper-scroll"><img id="review-image" class="original-image" src="/api/scripts/${parent.id}/pages/${shownPage}" alt="Original handwritten answer page"></div>
+      <div class="paper-scroll"><img id="review-image" class="original-image" data-page-url="/api/scripts/${parent.id}/pages/${shownPage}" alt="Original handwritten answer page"></div>
       <a class="sample-caption" href="/api/scripts/${parent.id}/document" target="_blank" rel="noopener">Download original document</a>
       ${regions.length?`<div class="document-tools">${regions.map((r,i)=>`<button class="button secondary" data-region="${i}">Region ${i+1} · Page ${r.page}</button>`).join('')}</div>`:''}
-    </div><div class="transcription">
+      ${canSegment()?`<div class="document-tools review-document-actions">
+        ${btn('Add Answer Region','select-region','expand',true)}
+        ${writable()&&regions.length?`<button class="button secondary" data-action="run-ocr" ${assessing||activeStatus(item.ocrJob?.status)?'disabled':''}>${icon('file')} Run Region OCR</button>`:''}
+        ${writable()?`<button class="button" data-action="assess-script" ${assessing||regionOcr?'disabled':''}>${icon('layers')} Auto OCR &amp; Assess</button>`:''}
+      </div>`:''}
+      ${assessmentJobPanel(parent)}
+    </div><div class="review-main"><div class="transcription">
       <div class="tabs" role="tablist">${['OCR Text','Script OCR','Rubric & Score','History'].map(t=>`<button role="tab" aria-selected="${tab===t}" class="${tab===t?'active':''}" data-tab="${t}">${t}</button>`).join('')}</div>
+      ${tab==='OCR Text'?`<div class="section-heading"><h2>Answer Transcription</h2>${icon('edit')}</div>`:''}
       <textarea id="ocr-text" lang="bn" aria-label="Verified transcription" ${tab==='OCR Text'?'':'hidden'} placeholder="Verify against the original handwriting">${esc(s.ocr||'')}</textarea>
       <div id="tab-content">
         ${tab==='OCR Text'?`${ocrPanel(s)}${suggestionPanel(item)}`:tab==='History'?historyPanel(parent):tab==='Script OCR'?scriptOcrPanel(parent, shownPage):`<h3>Rubric &amp; Score</h3>
-          ${state.criteria.map(c=>`<div class="evidence">${esc(c.text)}<strong>${c.marks} marks</strong></div>`).join('')}
+          ${item.scoringMode==='CRITERIA'?'':state.criteria.map(c=>`<div class="evidence">${esc(c.text)}<strong>${c.marks} marks</strong></div>`).join('')}
           ${item.rubricVersion?.startsWith('RUB-')?`<p><a href="/api/rubrics/${item.rubricVersion}/signed">Download the signed rubric used for this answer</a></p>`:''}${suggestionPanel(item)}`}
       </div>
-    </div><div class="decision">
-      <h3>Marker's Decision</h3><p>${badge(parent.status)}</p>
+    </div><section class="decision" ${['Script OCR','History'].includes(tab)?'hidden':''}>
+      <div class="section-heading"><h2>Marker's Decision</h2>${badge(parent.status)}</div>
       <form id="review-form">
-        <label>Evidence page<input id="answer-page" type="number" min="1" max="${pages}" value="${s.page||1}"></label>
+        <label class="review-score">Question score<div class="score-input"><input id="final-score" ${s.scoringMode==='CRITERIA'?'readonly':''} type="number" step="0.01" min="0" max="${total()}" value="${score}"><span>/ ${total()}</span></div></label>
         ${criterionMarking(item)}
-        <label>Question score<div class="score-input"><input id="final-score" ${s.scoringMode==='CRITERIA'?'readonly':''} type="number" step="0.01" min="0" max="${total()}" value="${score}"><span>/ ${total()}</span></div></label>
+        <label class="review-evidence-page">Evidence page<input id="answer-page" type="number" min="1" max="${pages}" value="${s.page||1}"></label>
         <label class="check-label"><input id="manual-review" type="checkbox" ${s.manualReview?'checked':''}> Mark manually from the original</label>
         <label>Remarks<textarea id="remarks" lang="bn" maxlength="2000">${esc(s.remarks||'')}</textarea></label>
         <p class="small muted">Explain manual review and changes to suggested marks in Remarks.</p>
-      </form></div>
+      </form>
+      ${writable()?`<p id="review-feedback" class="form-feedback" role="alert" hidden></p>
+        <div class="review-actions">${btn('Save Question','save-draft','save',true)}${btn('Submit All Questions','submit-review','arrow')}</div>`:''}
+    </section></div>
     </section>${workflow()}`,'Scripts');
 }
 function historyPanel(parent){
@@ -235,7 +240,13 @@ function rubricOptions(examId,selected){
   const exam=state.exams.find(e=>e.id===examId);
   if(!exam)return '<option value="">Select the exam first</option>';
   const pointers=exam.rubricPointers||{};
-  const versionFor=q=>pointers[q]||(!exam.questionRubrics?.[q]&&pointers[0]);
+  const versionFor=q=>{
+    const specific=exam.questionRubrics?.[q];
+    const maximum=exam.items?.[q-1]?.maximum;
+    const criteria=specific||exam.criteria||[];
+    const version=pointers[q]||(!specific&&pointers[0]);
+    return maximum==null||sumMarks(criteria.map(criterion=>criterion.marks))===Number(maximum) ? version : null;
+  };
   const options=[];
   if(Array.from({length:exam.questions},(_,i)=>versionFor(i+1)).every(Boolean))
     options.push({scope:'all',label:'Whole exam · all question rubrics'});
@@ -342,16 +353,38 @@ function login(){
   </div>`;
 }
 function profile(){return shell(`${heading('Your Profile','Manage your assessment workspace.')}<section class="panel narrow"><div class="profile-avatar">T</div><h2>${esc(state.user||"School account")}</h2><p class="muted">${esc(state.role||"")} · Academic assessment workspace</p><div class="form-actions">${btn('Sign Out','logout','',true)}</div></section>`,'')}
-function render(){const p=location.pathname;$('#app').innerHTML=({'/login':login,'/rubrics':rubrics,'/review':review,'/exams':exams,'/scripts':scripts,'/upload':upload,'/moderation':moderation,'/reports':reports,'/profile':profile,'/verify':verifyPage}[p]||dashboard)();document.title=(`${p.slice(1)||'Dashboard'} · Answer Assessment Assistant`);if(p==='/review'&&!writable()){document.querySelectorAll('#review-form input,#review-form textarea,#review-form select,#ocr-text').forEach(el=>el.disabled=true)}}
+function render(){
+  const path=location.pathname;
+  const previousPage=path==='/review'?$('#review-image'):null;
+  const previousScroll=previousPage?.parentElement.scrollTop||0;
+  $('#app').innerHTML=({'/login':login,'/rubrics':rubrics,'/review':review,'/exams':exams,'/scripts':scripts,'/upload':upload,'/moderation':moderation,'/reports':reports,'/profile':profile,'/verify':verifyPage}[path]||dashboard)();
+  document.title=(`${path.slice(1)||'Dashboard'} · Answer Assessment Assistant`);
+  if(path!=='/review')return;
+  const page=$('#review-image');
+  if(page){
+    if(previousPage?.getAttribute('src')===page.dataset.pageUrl&&previousPage.naturalWidth>0){
+      page.replaceWith(previousPage);
+      previousPage.parentElement.scrollTop=previousScroll;
+    }else page.src=page.dataset.pageUrl;
+  }
+  if(!writable())document.querySelectorAll('#review-form input,#review-form textarea,#review-form select,#ocr-text').forEach(el=>el.disabled=true);
+}
 async function api(path,body,extraHeaders={}){
-  const c=await fetch('/api/csrf').then(r=>r.json());
+  const form=body instanceof FormData;
+  const payload=form?body:JSON.stringify({...body,version:state.version});
+  const csrfResponse=await fetch('/api/csrf');
+  if(csrfResponse.status===401)throw Error('Your session expired. Sign in again before retrying.');
+  if(!csrfResponse.ok)throw Error('Could not start the request. Try again.');
+  const c=await csrfResponse.json();
   const headers={[c.headerName]:c.token,...extraHeaders};
-  if(!(body instanceof FormData))headers['Content-Type']='application/json';
-  const r=await fetch('/api'+path,{method:'POST',headers,body:body instanceof FormData?body:JSON.stringify({...body,version:state.version})});
+  if(!form)headers['Content-Type']='application/json';
+  const r=await fetch('/api'+path,{method:'POST',headers,body:payload});
   if(!r.ok){
     let data;
     try{data=await r.json()}catch{}
-    throw Error(data?.message|| (r.status===409?'This record changed while you were working. Refresh its status and try again.':`Request failed (${r.status}).`));
+    const error=Error(data?.message||(r.status===409?'This record changed while you were working. Refresh its status and try again.':`Request failed (${r.status}).`));
+    error.status=r.status;
+    throw error;
   }
   return r.json();
 }
@@ -363,11 +396,15 @@ async function refresh(preserveDraft=false){
   const latest=await response.json();
   if(latest.version<state.version)return;
   const draft=preserveDraft&&writable()&&$('#review-form')?reviewDraft():null;
+  const previousRegions=draft?.awards?evidenceRegions(answer()):[];
   state=latest;
   render();
   if(draft&&writable()){
-    const available=evidenceRegions(answer()).length;
-    draft.awards?.forEach(award=>{if(award.region!==null&&award.region>=available)award.region=null});
+    const available=evidenceRegions(answer());
+    draft.awards?.forEach(award=>{
+      const index=available.findIndex(region=>sameRegion(region,previousRegions[award.region]));
+      award.region=index<0?null:index;
+    });
     restoreDraft(draft);
   }
 }
@@ -377,10 +414,20 @@ function reviewDraft(){
     awards:answer().scoringMode==='CRITERIA'?captureAwards():null,manualReview:$('#manual-review').checked};
 }
 async function saveReview(submit,notice=true){
+  $('#review-feedback').hidden=true;
   if(!$('#review-form').reportValidity())throw Error('Check the evidence page and the criterion marks.');
   const body=reviewDraft();
   if(submit&&body.score===null)throw Error('Enter the question score before submitting.');
-  await api('/scripts/'+script().id+'/review',{...body,submit});
+  if(body.score!==null&&evidenceRegions(answer()).length>1&&body.awards?.some(award=>award.marks>0&&award.region===null))
+    throw Error('Choose a source region for each criterion with positive marks.');
+  try{
+    await api('/scripts/'+script().id+'/review',{...body,submit});
+  }catch(error){
+    if(error.status!==409)throw error;
+    await refresh(true);
+    if(!writable())throw Error('The script status changed. Refresh the review before retrying.');
+    throw Error('The script changed while you were marking. Your draft is still here. Check the sources and try saving again.');
+  }
   await refresh(!submit);
   if(notice)toast(submit?'Submitted for moderation.':'Question draft saved.');
 }
@@ -425,12 +472,13 @@ function showExamItems(){
 }
 const assessmentJobs=new Map();
 const activeStatus=status=>['PENDING','RUNNING'].includes(status);
+const hasRegionOcr=parent=>(parent.answers||[parent]).some(item=>activeStatus(item.ocrJob?.status));
 const jobFor=parent=>assessmentJobs.get(parent.id)||state.jobs?.findLast(job=>job.script_id===parent.id);
 let pollTimer;
 function scheduleReviewPoll(){
   clearTimeout(pollTimer);
   if(location.pathname!=='/review'||!script())return;
-  if(!activeStatus(jobFor(script())?.state)&&!activeStatus(answer()?.ocrJob?.status))return;
+  if(!activeStatus(jobFor(script())?.state)&&!hasRegionOcr(script()))return;
   pollTimer=setTimeout(async()=>{
     if($('#modal').open||document.activeElement?.matches('textarea,input,select')){scheduleReviewPoll();return}
     try{
@@ -578,7 +626,13 @@ document.addEventListener('click',async event=>{
         location.href='/login';break;
       }
     }
-  }catch(error){toast(error.message)}
+  }catch(error){
+    const feedback=$('#review-feedback');
+    if(feedback&&['save-draft','submit-review'].includes(target.dataset.action)){
+      feedback.textContent=error.message;
+      feedback.hidden=false;
+    }else toast(error.message);
+  }
 });
 function updateReviewTotal(){
   const awards=captureAwards();
@@ -759,7 +813,7 @@ async function saveRegion(remove){
 function captureAwards(){
   return [...document.querySelectorAll('.criterion-award')].map(el=>{
     const value=el.querySelector('.award-score').value,region=el.querySelector('.award-region');
-    return {marks:value===''?null:Number(value),evidence:el.querySelector('.award-evidence').value,region:region?Number(region.value):null};
+    return {marks:value===''?null:Number(value),evidence:el.querySelector('.award-evidence').value,region:region?.value?Number(region.value):null};
   });
 }
 const sameRegion=(a,b)=>b&&['page','x','y','width','height'].every(key=>Number(a[key])===Number(b[key]));
@@ -776,20 +830,24 @@ function criterionMarking(item){
   return `<div class="criterion-marking">${item.criteria.map((c,i)=>{
     const award=(item.awards||item.draftAwards)?.[i];
     const source=award?.source;
-    const current=source?regions.findIndex(r=>sameRegion(r,source)):0;
-    return `<div class="criterion-award"><label>${esc(c.text)} · Max ${c.marks}<input class="award-score" type="number" min="0" max="${c.marks}" step="0.01" value="${award?.marks??''}"></label>
-      <label>Supporting excerpt<textarea class="award-evidence" maxlength="2000">${esc(award?.evidence||'')}</textarea></label>
-      ${regions.length?`<label>Source region<select class="award-region">${regions.map((r,index)=>`<option value="${index}" ${index===current?'selected':''}>Region ${index+1} · Page ${r.page}</option>`).join('')}</select></label>`:''}</div>`;
+    const current=source?regions.findIndex(r=>sameRegion(r,source)):regions.length===1?0:-1;
+    return `<div class="criterion-award"><label class="award-label"><span>${esc(c.text)} <small>· Max ${c.marks}</small></span><input class="award-score" type="number" min="0" max="${c.marks}" step="0.01" value="${award?.marks??''}"></label>
+      <details class="award-details" ${item.criteria.length===1?'open':''}><summary>Evidence${source?' · Page '+source.page:''}</summary>
+        <label>Supporting excerpt<textarea class="award-evidence" maxlength="2000" placeholder="Paste the exact words from the verified transcription">${esc(award?.evidence||'')}</textarea></label>
+        ${regions.length?`<label>Source region<select class="award-region"><option value="">Choose source region</option>${regions.map((r,index)=>`<option value="${index}" ${index===current?'selected':''}>Region ${index+1} · Page ${r.page}</option>`).join('')}</select></label>`:''}
+      </details></div>`;
   }).join('')}</div>`;
 }
 function restoreDraft(draft){
   $('#ocr-text').value=draft.ocr;$('#remarks').value=draft.remarks;
   $('#final-score').value=draft.score??'';$('#manual-review').checked=draft.manualReview;
   if(draft.page<=$('#answer-page').max)$('#answer-page').value=draft.page;
+  const defaultSource=evidenceRegions(answer()).length===1?'0':'';
   if(draft.awards)document.querySelectorAll('.criterion-award').forEach((el,i)=>{
     el.querySelector('.award-score').value=draft.awards[i].marks??'';
     el.querySelector('.award-evidence').value=draft.awards[i].evidence;
-    if(el.querySelector('.award-region')&&draft.awards[i].region!==null)el.querySelector('.award-region').value=draft.awards[i].region;
+    const region=el.querySelector('.award-region');
+    if(region)region.value=draft.awards[i].region??defaultSource;
   });
 }
 function changedDraft(){

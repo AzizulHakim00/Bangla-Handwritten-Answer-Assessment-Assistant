@@ -21,7 +21,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.*;
 
 @WebMvcTest(AssessmentApi.class)
-@Import(SecurityConfig.class)
+@Import({SecurityConfig.class, com.assessment.service.DocumentService.class, com.assessment.service.ArtifactSigner.class})
 @TestPropertySource(properties={"TEACHER_PASSWORD=teacher-test-password", "MARKER_PASSWORD=marker-test-password", "MODERATOR_PASSWORD=moderator-test-password", "assessment.storage=target/test-documents"})
 class AssessmentApiTest {
     @Autowired MockMvc mvc;
@@ -98,7 +98,7 @@ class AssessmentApiTest {
             .contentType("application/json").content("{\"version\":1,\"score\":2,\"ocr\":\"Corrected answer\",\"remarks\":\"Revised\",\"submit\":true}"))
             .andExpect(status().isOk());
         mvc.perform(get("/api/exports/marks.csv").with(user("teacher").roles("TEACHER")))
-            .andExpect(content().string(org.hamcrest.Matchers.containsString(",6,7,Approved")));
+            .andExpect(content().string(org.hamcrest.Matchers.containsString(",6,7,Approved,")));
         mvc.perform(post("/api/scripts/SCR-1/approve").with(user("moderator").roles("MODERATOR")).with(csrf())
             .contentType("application/json").content("{\"version\":1}"))
             .andExpect(status().isOk()).andExpect(jsonPath("$.scripts[0].approvedRevisions[0].score").value(6))
@@ -141,8 +141,14 @@ class AssessmentApiTest {
     @Test void uploadCopiesDifferentRubricsForDifferentQuestions() throws Exception {
         workspace.exams.add(new LinkedHashMap<>(Map.of("id","EX-1","questions",2,"scoringMode","CRITERIA",
             "criteria",List.of(Map.of("text","Default","marks",2)),
-            "questionRubrics",Map.of("2",List.of(Map.of("text","Second question","marks",7))))));
-        var file=new org.springframework.mock.web.MockMultipartFile("files","answer.pdf","application/pdf","%PDF-test".getBytes());
+            "questionRubrics",Map.of("2",List.of(Map.of("text","Second question","marks",7))),
+            "rubricPointers",Map.of("0","RUB-default","2","RUB-second"))));
+        var bytes = new java.io.ByteArrayOutputStream();
+        try (var document = new org.apache.pdfbox.pdmodel.PDDocument()) {
+            document.addPage(new org.apache.pdfbox.pdmodel.PDPage());
+            document.save(bytes);
+        }
+        var file=new org.springframework.mock.web.MockMultipartFile("files","answer.pdf","application/pdf",bytes.toByteArray());
         mvc.perform(multipart("/api/uploads").file(file).param("version","1").param("exam","EX-1")
             .with(user("teacher").roles("TEACHER")).with(csrf()))
             .andExpect(status().isOk()).andExpect(jsonPath("$.scripts[1].maximum").value(9))

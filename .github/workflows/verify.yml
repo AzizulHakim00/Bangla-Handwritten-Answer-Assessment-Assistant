@@ -16,6 +16,26 @@ jobs:
       - run: node --check src/main/resources/static/js/app.js
       - run: node scripts/frontend-smoke.cjs
       - run: sudo apt-get update && sudo apt-get install -y tesseract-ocr tesseract-ocr-ben tesseract-ocr-eng
+      - name: Start disposable MongoDB replica set
+        run: |
+          docker run -d --name assessment-test-mongo -p 127.0.0.1:27133:27133 mongo:8.0 \
+            --port 27133 --replSet p33 --bind_ip_all
+          for attempt in $(seq 1 30); do
+            if docker exec assessment-test-mongo mongosh --port 27133 --quiet --eval 'db.adminCommand({ping:1})' >/dev/null 2>&1; then
+              break
+            fi
+            sleep 2
+          done
+          docker exec assessment-test-mongo mongosh --port 27133 --quiet --eval \
+            'rs.initiate({_id:"p33",members:[{_id:0,host:"localhost:27133"}]})'
+          for attempt in $(seq 1 30); do
+            if docker exec assessment-test-mongo mongosh --port 27133 --quiet --eval 'quit(db.hello().isWritablePrimary?0:1)'; then
+              exit 0
+            fi
+            sleep 2
+          done
+          exit 1
       - run: mvn -B verify
         env:
           OCR_NATIVE_TEST: "true"
+          P33_TEST_MONGO_URI: "mongodb://localhost:27133/assessment_ci?replicaSet=p33"

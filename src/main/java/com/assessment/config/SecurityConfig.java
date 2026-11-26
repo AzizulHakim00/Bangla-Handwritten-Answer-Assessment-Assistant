@@ -1,6 +1,7 @@
 package com.assessment.config;
 
 import org.springframework.context.annotation.Bean;
+import org.springframework.security.web.authentication.UsernamePasswordAuthenticationFilter;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.core.env.Environment;
 import org.springframework.security.config.annotation.web.builders.HttpSecurity;
@@ -9,37 +10,65 @@ import org.springframework.security.core.userdetails.UserDetailsService;
 import org.springframework.security.provisioning.InMemoryUserDetailsManager;
 import org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder;
 import org.springframework.security.web.SecurityFilterChain;
-import org.springframework.security.web.util.matcher.AntPathRequestMatcher;
+import org.springframework.security.web.servlet.util.matcher.PathPatternRequestMatcher;
+import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
+import org.springframework.security.authentication.dao.DaoAuthenticationProvider;
+import org.springframework.security.core.userdetails.UserDetails;
 
 @Configuration
 public class SecurityConfig {
-    @Bean org.springframework.security.crypto.password.PasswordEncoder passwordEncoder() {
-        return new BCryptPasswordEncoder();
+    @Bean InstitutionAccounts institutionalAccounts(Environment env) throws java.io.IOException {
+        return new InstitutionAccounts(env);
     }
-    @Bean UserDetailsService users(Environment env) {
+
+    @Bean BCryptPasswordEncoder passwordEncoder() { return new BCryptPasswordEncoder(); }
+
+    @Bean UserDetailsService users(InstitutionAccounts accounts) {
         var users = new InMemoryUserDetailsManager();
-        var encoder = new BCryptPasswordEncoder();
-        for (String role : new String[]{"TEACHER", "MARKER", "MODERATOR"}) {
-            String password = env.getProperty(role + "_PASSWORD");
-            if (password == null || password.length() < 12)
-                throw new IllegalStateException("Set " + role + "_PASSWORD to at least 12 characters");
-            users.createUser(User.withUsername(role.toLowerCase() + "@school.local")
-                .password(encoder.encode(password)).roles(role).build());
+        for (var account : accounts.members()) {
+            users.createUser(User.withUsername(account.email()).password(account.passwordHash())
+                .authorities("ROLE_" + account.role(), "TENANT_" + account.tenant())
+                .disabled(!account.active()).build());
         }
         return users;
     }
-    @Bean SecurityFilterChain security(HttpSecurity http) throws Exception {
-        return http.authorizeHttpRequests(a -> a
+    @Bean DaoAuthenticationProvider institutionalLogin(UserDetailsService users, BCryptPasswordEncoder encoder,
+        Environment env, InstitutionAccounts accounts) throws java.io.IOException {
+        var mfa = new PilotMfa(env, accounts);
+        var provider = new DaoAuthenticationProvider(users) {
+            @Override
+            protected void additionalAuthenticationChecks(UserDetails user, UsernamePasswordAuthenticationToken auth) {
+                try {
+                    super.additionalAuthenticationChecks(user, auth);
+                    mfa.check(user.getUsername(), auth.getDetails());
+                } finally {
+                    if (auth.getDetails() instanceof PilotMfa.Code code) code.eraseCredentials();
+                }
+            }
+        };
+        provider.setPasswordEncoder(encoder);
+        return provider;
+    }
+
+    @Bean SecurityFilterChain security(HttpSecurity http, DaoAuthenticationProvider institutionalLogin) throws Exception {
+        return http.authenticationProvider(institutionalLogin).addFilterBefore(new LoginThrottle(), UsernamePasswordAuthenticationFilter.class).authorizeHttpRequests(a -> a
             .requestMatchers("/login", "/css/**", "/js/**", "/error").permitAll()
-            .requestMatchers(org.springframework.http.HttpMethod.POST, "/api/exams", "/api/rubrics", "/api/uploads").hasRole("TEACHER")
-            .requestMatchers(org.springframework.http.HttpMethod.POST, "/api/scripts/*/approve", "/api/scripts/*/return").hasRole("MODERATOR")
-            .requestMatchers(org.springframework.http.HttpMethod.POST, "/api/scripts/*/appeals").hasRole("TEACHER")
-            .requestMatchers(org.springframework.http.HttpMethod.POST, "/api/scripts/*/review", "/api/scripts/*/region", "/api/scripts/*/ocr").hasAnyRole("TEACHER", "MARKER")
+            .requestMatchers(org.springframework.http.HttpMethod.POST, "/api/exams", "/api/exams/*", "/api/rubrics", "/api/uploads", "/api/scripts/*/assignment", "/api/scripts/*/binding").hasRole("TEACHER")
+            .requestMatchers(org.springframework.http.HttpMethod.POST, "/api/scripts/*/approve", "/api/scripts/*/return", "/api/scripts/*/appeals/resolve").hasRole("MODERATOR")
+            .requestMatchers(org.springframework.http.HttpMethod.POST, "/api/scripts/*/appeals").hasAnyRole("TEACHER", "MODERATOR")
+            .requestMatchers(org.springframework.http.HttpMethod.POST, "/api/scripts/*/review", "/api/scripts/*/ocr",
+                "/api/v1/p33/script-assessments", "/api/v1/p33/mark-reviews", "/api/scripts/*/suggestion").hasRole("MARKER")
+            .requestMatchers(org.springframework.http.HttpMethod.POST, "/api/scripts/*/region").hasAnyRole("TEACHER", "MARKER")
+            .requestMatchers(org.springframework.http.HttpMethod.POST, "/api/v1/reviews").hasRole("MODERATOR")
+            .requestMatchers("/api/exports/**", "/reports").hasAnyRole("TEACHER", "MODERATOR")
+            .requestMatchers("/moderation").hasRole("MODERATOR")
+            .requestMatchers("/exams", "/upload", "/rubrics").hasRole("TEACHER")
             .anyRequest().authenticated())
-            .formLogin(f -> f.loginPage("/login").defaultSuccessUrl("/dashboard", true).permitAll())
+            .formLogin(f -> f.loginPage("/login").defaultSuccessUrl("/dashboard", true)
+                .authenticationDetailsSource(request -> new PilotMfa.Code(request.getParameter("otp"))).permitAll())
             .logout(l -> l.logoutSuccessUrl("/login?logout"))
             .exceptionHandling(e -> e.defaultAuthenticationEntryPointFor(
-                (req, res, ex) -> res.sendError(401), new AntPathRequestMatcher("/api/**")))
+                (req, res, ex) -> res.sendError(401), PathPatternRequestMatcher.withDefaults().matcher("/api/**")))
             .headers(h -> h.frameOptions(f -> f.sameOrigin()).contentSecurityPolicy(c -> c.policyDirectives("default-src 'self'; style-src 'self' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com; img-src 'self' blob:; frame-src 'self'; object-src 'none'; base-uri 'self'; form-action 'self'")))
             .build();
     }

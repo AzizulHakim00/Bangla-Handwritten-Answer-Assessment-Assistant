@@ -7,3 +7,36 @@
 .document-tools,.export-actions{display:flex;flex-wrap:wrap;gap:8px;padding:10px}.document-tools .button{font-size:12px;padding:8px 10px}.ocr-panel{border:1px solid var(--border);border-radius:10px;padding:14px;margin:15px 0;background:#f8f4ff}.ocr-panel textarea{min-height:100px}.region-fields{display:grid;grid-template-columns:repeat(4,1fr);gap:8px}#region-canvas{display:block;width:100%;height:auto;margin:16px 0;touch-action:none;border:1px solid var(--border)}
 
 .criterion-award{padding:12px 0;border-bottom:1px solid var(--border)}.criterion-award textarea{min-height:70px}.criterion-marking{margin-bottom:20px}
+
+[hidden]{display:none!important}
+:focus-visible{outline:3px solid var(--purple);outline-offset:3px}
+.viewer-toolbar label{display:flex;align-items:center;gap:.5rem;margin:0}
+.viewer-toolbar input{width:5rem;padding:.25rem .4rem}
+.check-label{display:flex;align-items:flex-start;gap:.6rem}
+.check-label input{width:auto;margin-top:.25rem}
+.criterion{display:grid;grid-template-columns:minmax(9rem,1.4fr) minmax(5rem,.5fr) minmax(10rem,1.5fr) auto;align-items:end}
+.criterion label,.criterion-award label{min-width:0}
+.item-fields{margin:.75rem 0}
+.suggestion{padding:1rem}
+.suggestion-list,.version-list{padding-left:1.2rem;margin:.5rem 0}
+.suggestion-list blockquote{border-left:3px solid var(--purple);margin:.35rem 0;padding:.25rem .6rem;background:white}
+.suggestion-list p{margin:.35rem 0 .9rem}
+.assessment-progress{margin:.5rem}
+.assessment-progress p{margin:0 0 .5rem}
+.file-item{gap:1rem;align-items:center;flex-wrap:wrap}
+.file-item label{min-width:14rem;margin:0}
+#verify-result:not(:empty){padding:.8rem;background:#f0edff;border-radius:8px}
+@media(max-width:700px){.criterion{grid-template-columns:1fr 6rem}.criterion label:nth-child(3){grid-column:1}}
+
+.scripts-table table{min-width:0;width:100%}
+.scripts-table td,.scripts-table th{white-space:normal;vertical-align:middle;overflow-wrap:anywhere}
+.scripts-table .script-link{display:inline-block;max-width:235px}
+.scripts-table td:last-child{width:1%}
+.script-actions{display:flex;flex-wrap:wrap;gap:.35rem;min-width:9rem}
+.script-actions .button{font-size:.8rem;padding:.35rem .6rem;text-align:center}
+@media(max-width:650px){
+  .scripts-table thead{position:absolute;width:1px;height:1px;overflow:hidden;clip-path:inset(50%)}
+  .scripts-table tr{display:block;padding:.6rem;border-bottom:1px solid var(--border)}
+  .scripts-table td,.scripts-table td:last-child{display:block;width:auto;padding:.3rem .5rem;border:0}
+  .scripts-table td::before{content:attr(data-label);display:block;font-size:.7rem;color:var(--muted)}
+}

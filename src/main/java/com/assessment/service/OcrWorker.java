@@ -1,60 +1,147 @@
 package com.assessment.service;
 
 import com.assessment.controller.AssessmentApi;
-import java.util.*;
-import java.nio.file.*;
+import com.assessment.model.Workspace;
+import java.io.IOException;
 import java.time.Instant;
+import java.util.*;
 import java.util.concurrent.TimeUnit;
-import javax.imageio.ImageIO;
+import java.util.function.Consumer;
+import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Service;
+import org.springframework.web.server.ResponseStatusException;
 
-/** Durable answer-local job, one worker, bounded native process, no automatic mark changes. */
 @Service
 public class OcrWorker {
-    private final WorkspaceService workspaces; private final DocumentService documents; private final String command;
-    public OcrWorker(WorkspaceService w,DocumentService d,@Value("${assessment.ocr-command:tesseract}") String c){workspaces=w;documents=d;command=c;}
-    @Scheduled(fixedDelay=5000,initialDelay=10000)
-    @SuppressWarnings("unchecked") public void tick() {
+    public static final String MODEL = "tesseract-ben-eng-psm6-baseline-v1";
+    public static final String MANUAL = "Review the original and transcribe or mark it manually.";
+    private final WorkspaceService workspaces;
+    private final DocumentService documents;
+    private final String command;
+
+    public OcrWorker(WorkspaceService workspaces, DocumentService documents,
+        @Value("${assessment.ocr-command:tesseract}") String command) {
+        this.workspaces = workspaces;
+        this.documents = documents;
+        this.command = command;
+    }
+
+    @Scheduled(fixedDelay = 3000, initialDelay = 3000)
+    public void scheduledTick() {
         try {
-            var w=workspaces.read();
-            for(var s:w.scripts) for(var a:AssessmentApi.answers(s)) {
-                if(!(a.get("ocrJob") instanceof Map<?,?> raw)) continue;
-                var job=(Map<String,Object>)raw;
-                boolean expired="RUNNING".equals(job.get("status"))&&Instant.parse(job.get("startedAt").toString()).isBefore(Instant.now().minusSeconds(120));
-                if(!"PENDING".equals(job.get("status"))&&!expired) continue;
-                String id=s.get("id").toString(),jobId=job.get("id").toString(); int q=((Number)a.get("question")).intValue();
-                workspaces.change(w.version,x->{var j=job(x,id,q,jobId);j.put("status","RUNNING");j.put("startedAt",Instant.now().toString());});
-                run(s,job,id,q,jobId);return;
+            for (String tenant : workspaces.tenants()) {
+                tick(() -> workspaces.readWithoutAudit(tenant), change -> workspaces.change(tenant, change.version, change.action));
             }
-        } catch(Exception ignored) { /* Database unavailable or optimistic conflict: next tick retries. */ }
+        } catch (RuntimeException ex) {
+            if (!(ex instanceof ResponseStatusException))
+                LoggerFactory.getLogger(OcrWorker.class).warn("OCR queue temporarily unavailable ({})", ex.getClass().getSimpleName());
+        }
     }
-    private void run(Map<String,Object> s,Map<String,Object> job,String id,int q,String jobId) {
-        Path temp=null;String text="",error="";boolean ok=false;
-        try {
-            temp=Files.createTempDirectory("answer-ocr-");
-            @SuppressWarnings("unchecked") var region=(Map<String,Object>)job.get("region");
-            var image=DocumentService.crop(documents.page(s,((Number)region.get("page")).intValue()),region);
-            Path input=temp.resolve("input.png"),output=temp.resolve("result");ImageIO.write(image,"png",input.toFile());
-            Process process=new ProcessBuilder(command,input.toString(),output.toString(),"-l","ben+eng","--psm","6")
-                .redirectOutput(ProcessBuilder.Redirect.DISCARD).redirectError(ProcessBuilder.Redirect.DISCARD).start();
-            if(!process.waitFor(45,TimeUnit.SECONDS)){process.destroyForcibly();process.waitFor(5,TimeUnit.SECONDS);throw new Exception("timeout");}
-            if(process.exitValue()!=0)throw new Exception("OCR engine error");
-            Path result=Path.of(output+".txt");if(Files.size(result)>120000)throw new Exception("output too large");
-            text=Files.readString(result).strip();if(text.length()>30000)throw new Exception("output too large");
-            ok=true;
-        } catch(Exception ex) { error="OCR could not read this region. Check the local engine and use manual transcription."; }
-        finally { if(temp!=null)try(var files=Files.list(temp)){for(Path f:files.toList())Files.deleteIfExists(f);Files.deleteIfExists(temp);}catch(Exception ignored){} }
-        final String candidate=text,message=error; final boolean success=ok;
-        for(int attempt=0;attempt<3;attempt++)try {
-            var current=workspaces.read();workspaces.change(current.version,w->{var j=job(w,id,q,jobId);
-                j.put("status",success?"NEEDS_REVIEW":"FAILED");j.put("candidate",candidate);j.put("message",message);
-                j.put("completedAt",Instant.now().toString());});return;
-        } catch(Exception ignored) { /* A canceled/replaced job cannot overwrite a newer region or review. */ }
+
+    public void tick() {
+        tick(workspaces::read, change -> workspaces.change(change.version, change.action));
     }
-    @SuppressWarnings("unchecked") private static Map<String,Object> job(com.assessment.model.Workspace w,String id,int q,String jobId) {
-        var s=WorkspaceService.script(w,id);var a=AssessmentApi.answers(s).get(q-1);
-        var j=(Map<String,Object>)a.get("ocrJob");if(j==null||!jobId.equals(j.get("id")))throw new IllegalStateException("Job replaced");return j;
+
+    @SuppressWarnings("unchecked")
+    private void tick(java.util.function.Supplier<Workspace> read, Consumer<Change> save) {
+        var workspace = read.get();
+        for (var script : workspace.scripts) {
+            for (var answer : AssessmentApi.answers(script)) {
+                if (!(answer.get("ocrJob") instanceof Map<?, ?> raw)) continue;
+                var job = (Map<String, Object>) raw;
+                if (!claimable(job)) continue;
+                if (List.of("Approved", "Pending Moderation").contains(Objects.toString(script.get("status"), "")) ||
+                    script.containsKey("marker") && !Objects.equals(script.get("marker"), job.get("requestedBy"))) {
+                    save.accept(new Change(workspace.version, w -> {
+                        var current = matching(w, script.get("id").toString(), ((Number) answer.get("question")).intValue(),
+                            job.get("id").toString());
+                        current.put("status", "STALE");
+                        current.remove("lease");
+                    }));
+                    return;
+                }
+                String id = script.get("id").toString(), jobId = job.get("id").toString();
+                int q = ((Number) answer.get("question")).intValue();
+                String lease = UUID.randomUUID().toString();
+                int attempts = ((Number) job.getOrDefault("attempts", 0)).intValue();
+                save.accept(new Change(workspace.version, w -> {
+                    var saved = matching(w, id, q, jobId);
+                    if (attempts >= 3) {
+                        saved.put("status", "FAILED");
+                        saved.put("message", MANUAL);
+                    } else {
+                        saved.put("status", "RUNNING");
+                        saved.put("lease", lease);
+                        saved.put("startedAt", Instant.now().toString());
+                        saved.put("attempts", attempts + 1);
+                    }
+                }));
+                if (attempts >= 3) return;
+                List<Map<String, Object>> regions = job.get("regions") instanceof List<?> list ?
+                    (List<Map<String, Object>>) list : List.of((Map<String, Object>) job.get("region"));
+                var result = recognize(script, regions);
+                for (int retry = 0; retry < 4; retry++) {
+                    try {
+                        var latest = read.get();
+                        save.accept(new Change(latest.version, w -> {
+                            var saved = matching(w, id, q, jobId);
+                            if (!lease.equals(saved.get("lease"))) throw new IllegalStateException("Lease changed");
+                            saved.putAll(result);
+                            saved.put("completedAt", Instant.now().toString());
+                        }));
+                        return;
+                    } catch (ResponseStatusException ex) {
+                        if (ex.getStatusCode().value() != 409) return;
+                    } catch (IllegalStateException ex) { return; }
+                }
+                return;
+            }
+        }
     }
+
+    private record Change(long version, Consumer<Workspace> action) {}
+
+    public static boolean claimable(Map<String, Object> job) {
+        return "PENDING".equals(job.get("status")) || "RUNNING".equals(job.get("status"))
+            && Instant.parse(job.get("startedAt").toString()).isBefore(Instant.now().minusSeconds(180));
+    }
+
+    @SuppressWarnings("unchecked")
+    private static Map<String, Object> matching(Workspace w, String id, int question, String jobId) {
+        var answer = AssessmentApi.answers(WorkspaceService.script(w, id)).get(question - 1);
+        var job = (Map<String, Object>) answer.get("ocrJob");
+        if (job == null || !jobId.equals(job.get("id"))) throw new IllegalStateException("OCR job replaced");
+        return job;
+    }
+
+    public Map<String, Object> recognize(Map<String, Object> script, List<Map<String, Object>> regions) {
+        var sourceSpans = new ArrayList<Map<String, Object>>();
+        var text = new StringBuilder();
+        boolean failed = false;
+        long deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(60);
+        for (var region : regions) {
+            if (System.nanoTime() >= deadline) { failed = true; break; }
+            try {
+                String raw = documents.recognize(script, region, command, deadline);
+                if (raw.isBlank()) continue;
+                if (text.length() + raw.length() + 1 > 30_000) { failed = true; break; }
+                if (!text.isEmpty()) text.append('\n');
+                int start = text.length();
+                text.append(raw);
+                sourceSpans.add(Map.of("start", start, "end", text.length(), "source", region));
+            } catch (IOException | RuntimeException ex) {
+                failed = true;
+            } catch (InterruptedException ex) {
+                Thread.currentThread().interrupt();
+                failed = true;
+                break;
+            }
+        }
+        String state = text.isEmpty() ? failed ? "FAILED" : "MANUAL_REVIEW" : "NEEDS_REVIEW";
+        return Map.of("status", state, "candidate", text.toString(), "sourceSpans", sourceSpans,
+            "message", failed || text.isEmpty() ? MANUAL : "");
+    }
+
 }

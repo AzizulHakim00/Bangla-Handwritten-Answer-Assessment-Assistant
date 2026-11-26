@@ -1,26 +1,88 @@
 services:
   app:
     build: .
-    ports: ["127.0.0.1:8085:8080"]
+    ports:
+      - "127.0.0.1:${ASSESSMENT_HTTP_PORT:-8085}:8080"
     environment:
-      PORT: "8080"
-      MONGODB_URI: mongodb://mongo:27017/answer_assessment
+      MONGODB_URI: ${MONGODB_URI:-mongodb://mongo:27017/answer_assessment?replicaSet=assessment&serverSelectionTimeoutMS=10000}
+      ASSESSMENT_PARTITIONED: "true"
       SCRIPT_STORAGE: /data/scripts
-      TEACHER_PASSWORD: ${TEACHER_PASSWORD:?Set TEACHER_PASSWORD in .env}
-      MARKER_PASSWORD: ${MARKER_PASSWORD:?Set MARKER_PASSWORD in .env}
-      MODERATOR_PASSWORD: ${MODERATOR_PASSWORD:?Set MODERATOR_PASSWORD in .env}
-    volumes: ["scripts:/data/scripts"]
+      TEACHER_PASSWORD: ${TEACHER_PASSWORD:-}
+      MARKER_PASSWORD: ${MARKER_PASSWORD:-}
+      MODERATOR_PASSWORD: ${MODERATOR_PASSWORD:-}
+      ASSESSMENT_ACCOUNTS_JSON: ${ASSESSMENT_ACCOUNTS_JSON:-}
+      ASSESSMENT_ENCRYPTION_KEY: ${ASSESSMENT_ENCRYPTION_KEY:-}
+      ASSESSMENT_ENCRYPTION_KEYS_JSON: ${ASSESSMENT_ENCRYPTION_KEYS_JSON:-}
+      ASSESSMENT_ENCRYPTION_ACTIVE_VERSION: ${ASSESSMENT_ENCRYPTION_ACTIVE_VERSION:-1}
+      ASSESSMENT_WORKER_URL: http://worker:8090/
+      ASSESSMENT_WORKER_TOKEN: ${ASSESSMENT_WORKER_TOKEN:?Set ASSESSMENT_WORKER_TOKEN in .env}
+      ASSESSMENT_SECURE_COOKIES: ${ASSESSMENT_SECURE_COOKIES:-false}
+      ASSESSMENT_FORWARD_HEADERS: ${ASSESSMENT_FORWARD_HEADERS:-none}
+      ASSESSMENT_PILOT: ${ASSESSMENT_PILOT:-false}
+      ASSESSMENT_MFA_SECRETS_JSON: ${ASSESSMENT_MFA_SECRETS_JSON:-}
+    volumes:
+      - scripts:/data/scripts
+    networks: [edge, database, documents]
     depends_on:
-      mongo:
-        condition: service_healthy
+      mongo: {condition: service_healthy}
+      worker: {condition: service_started}
+    security_opt: [no-new-privileges:true]
+
+  worker:
+    build: .
+    environment:
+      ASSESSMENT_WORKER_ONLY: "true"
+      ASSESSMENT_WORKER_TOKEN: ${ASSESSMENT_WORKER_TOKEN:?Set ASSESSMENT_WORKER_TOKEN in .env}
+      JAVA_TOOL_OPTIONS: "-Xmx512m -Djava.awt.headless=true"
+    networks: [documents]
+    read_only: true
+    tmpfs:
+      - /tmp:size=180m,uid=10001,gid=10001,mode=0700
+    mem_limit: 768m
+    cpus: 2
+    pids_limit: 96
+    cap_drop: [ALL]
+    security_opt: [no-new-privileges:true]
+
   mongo:
     image: mongo:8.0
-    volumes: ["mongo_data:/data/db"]
+    command: ["mongod", "--replSet", "assessment", "--bind_ip_all"]
+    volumes:
+      - mongo_data:/data/db
+    networks: [database]
     healthcheck:
-      test: ["CMD", "mongosh", "--quiet", "--eval", "db.adminCommand('ping').ok"]
-      interval: 10s
+      test:
+        - CMD-SHELL
+        - >-
+          mongosh --quiet --host localhost
+          --eval 'try { rs.status() } catch (error) {
+          if (error.code !== 94) throw error;
+          rs.initiate({_id:"assessment",members:[{_id:0,host:"mongo:27017"}]})
+          } if (!db.hello().isWritablePrimary) quit(1)'
+      interval: 5s
       timeout: 5s
-      retries: 12
+      retries: 24
+
+  https:
+    image: caddy:2
+    profiles: [https]
+    environment:
+      ASSESSMENT_HTTPS_HOST: ${ASSESSMENT_HTTPS_HOST:-localhost}
+    ports:
+      - "80:80"
+      - "443:443"
+    networks: [edge]
+    volumes:
+      - ./deploy/Caddyfile:/etc/caddy/Caddyfile:ro
+      - tls_data:/data
+    depends_on: [app]
+
+networks:
+  edge:
+  database: {internal: true}
+  documents: {internal: true}
+
 volumes:
   mongo_data:
   scripts:
+  tls_data:

@@ -11,12 +11,12 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 
 @WebMvcTest(PageController.class)
 @org.springframework.context.annotation.Import(com.assessment.config.SecurityConfig.class)
-@org.springframework.security.test.context.support.WithMockUser
+@org.springframework.security.test.context.support.WithMockUser(roles={"TEACHER", "MODERATOR"})
 @org.springframework.test.context.TestPropertySource(properties={"TEACHER_PASSWORD=teacher-test-password", "MARKER_PASSWORD=marker-test-password", "MODERATOR_PASSWORD=moderator-test-password"})
 class PageRoutesTest {
     @Autowired MockMvc mvc;
     @ParameterizedTest
-    @ValueSource(strings={"/", "/login", "/dashboard", "/exams", "/rubrics", "/scripts", "/upload", "/review", "/moderation", "/reports", "/profile"})
+    @ValueSource(strings={"/", "/login", "/dashboard", "/exams", "/rubrics", "/scripts", "/upload", "/review", "/moderation", "/reports", "/profile", "/verify"})
     void servesFrontendWithoutDatabase(String path) throws Exception {
         mvc.perform(get(path)).andExpect(status().isOk()).andExpect(view().name("app"))
             .andExpect(content().string(org.hamcrest.Matchers.containsString("/js/app.js")));

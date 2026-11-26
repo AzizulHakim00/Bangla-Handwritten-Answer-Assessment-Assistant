@@ -40,7 +40,7 @@ public class AssessmentJobWorker {
         String tenant = workspace.id;
         String id = job.get("id").toString(), scriptId = job.get("scriptId").toString();
         var script = WorkspaceService.script(workspace, scriptId);
-        if (!requestStillAuthorized(job, script)) {
+        if (!OcrWorker.MODEL.equals(job.get("modelVersion")) || !requestStillAuthorized(job, script)) {
             workspaces.change(tenant, workspace.version, w -> stale(AssessmentJobs.find(w, id)));
             return;
         }

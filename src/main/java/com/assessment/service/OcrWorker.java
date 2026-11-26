@@ -15,7 +15,7 @@ import org.springframework.web.server.ResponseStatusException;
 
 @Service
 public class OcrWorker {
-    public static final String MODEL = "tesseract-ben-eng-psm6-baseline-v1";
+    public static final String MODEL = "tesseract-bengali-script-psm6-180dpi-v2";
     public static final String MANUAL = "Review the original and transcribe or mark it manually.";
     private final WorkspaceService workspaces;
     private final DocumentService documents;
@@ -89,6 +89,7 @@ public class OcrWorker {
                             var saved = matching(w, id, q, jobId);
                             if (!lease.equals(saved.get("lease"))) throw new IllegalStateException("Lease changed");
                             saved.putAll(result);
+                            saved.put("modelVersion", MODEL);
                             saved.put("completedAt", Instant.now().toString());
                         }));
                         return;

@@ -16,7 +16,8 @@ final class NativeOcr {
         try {
             Path input = temp.resolve("input.png"), output = temp.resolve("result");
             ImageIO.write(image, "png", input.toFile());
-            var builder = new ProcessBuilder(command, input.toString(), output.toString(), "-l", "ben+eng", "--psm", "6")
+            var builder = new ProcessBuilder(command, input.toString(), output.toString(), "-l", "Bengali", "--oem", "1", "--psm", "6",
+                "-c", "tessedit_char_blacklist=ৰৱ")
                 .directory(temp.toFile()).redirectOutput(ProcessBuilder.Redirect.DISCARD).redirectError(ProcessBuilder.Redirect.DISCARD);
             var env = builder.environment();
             String path = env.getOrDefault("PATH", "/usr/bin:/bin"), tessdata = env.get("TESSDATA_PREFIX");

@@ -58,7 +58,7 @@ public final class DocumentWorkerServer {
                     output = Integer.toString(DocumentService.localValidate(input, mime)).getBytes(StandardCharsets.US_ASCII);
                 } else {
                     int page = Integer.parseInt(headers.getFirst("X-Page"));
-                    var image = DocumentService.localPage(input, mime, page);
+                    var image = DocumentService.localPage(input, mime, page, "/ocr".equals(operation));
                     if ("/page".equals(operation)) {
                         var stream = new ByteArrayOutputStream();
                         ImageIO.write(image, "png", stream);

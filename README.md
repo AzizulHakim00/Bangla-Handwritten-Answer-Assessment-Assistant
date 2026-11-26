@@ -23,7 +23,7 @@ The localhost Compose login page shows **Demo Teacher**, **Demo Marker**, and **
 
 Compose starts a MongoDB replica set and an isolated PDFBox/Tesseract worker. The application is bound to localhost. MongoDB and the worker have no published host ports. MongoDB uses a named volume. Originals, encryption keys and the signing registry use the private scripts volume. The browser views rendered pages and can download the original after an authorization check.
 
-For Java development, install Java 21, Maven, MongoDB and Tesseract with `ben` and `eng` data. Configure the three role passwords and run `mvn spring-boot:run`. Spring Boot listens on port 8080 by default. Set `MONGODB_URI` for your database. Enable `ASSESSMENT_PARTITIONED=true` with a replica set to use the Compose storage layout, or run against a separate standalone development database using the aggregate layout. An existing partitioned database requires replica-set mode.
+For Java development, install Java 21, Maven, MongoDB and Tesseract with the `Bengali` script model (`tesseract-ocr-script-beng` on Ubuntu and Debian). Configure the three role passwords and run `mvn spring-boot:run`. Spring Boot listens on port 8080 by default. Set `MONGODB_URI` for your database. Enable `ASSESSMENT_PARTITIONED=true` with a replica set to use the Compose storage layout, or run against a separate standalone development database using the aggregate layout. An existing partitioned database requires replica-set mode.
 
 Upgrading an older Compose installation with a root-owned scripts volume requires adjusting its ownership once. Stop the application and back up the volumes before running `docker compose run --rm --no-deps --user root --entrypoint chown app -R 10001:10001 /data/scripts`. Replica-set mode migrates the existing structured workspace on its first successful write. Previously uploaded plaintext originals remain readable from their legacy location. Newly accepted scripts are always encrypted.
 
@@ -36,7 +36,7 @@ git pull --ff-only origin main
 powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\update-local.ps1
 ```
 
-The updater keeps existing passwords, generates a missing worker token, builds both images, and adjusts the old scripts volume's file ownership. Open [http://localhost:8085/login](http://localhost:8085/login) and confirm **Build 2026.11.27-r4**. The Scripts table shows the actual exam, rubric revision, and available actions. Use **Change Exam / Rubric** to correct an existing upload while it is still **To Review**. Teachers configure exams and rubrics, and the assigned marker runs OCR and assessment.
+The updater keeps existing passwords, generates a missing worker token, builds both images, and adjusts the old scripts volume's file ownership. Open [http://localhost:8085/login](http://localhost:8085/login) and confirm **Build 2026.11.27-r4.1**. The Scripts table shows the actual exam, rubric revision, and available actions. Use **Change Exam / Rubric** to correct an existing upload while it is still **To Review**. Teachers configure exams and rubrics, and the assigned marker runs OCR and assessment.
 
 ## Complete an assessment
 
@@ -88,7 +88,19 @@ For the desktop and mobile browser workflow, install Playwright and Chromium, st
 
 Set `OCR_NATIVE_TEST=true` to exercise native OCR. Set `P33_TEST_MONGO_URI` to a **disposable replica-set database** to run the full signed workflow acceptance test. It checks isolated tenant and assignment access, rubric validation, tamper detection, idempotency, manual review without a default zero, score limits, independent approval, stale transitions and the preservation of a 6-mark approval when an appeal changes it to 7.
 
-The default OCR is a local Tesseract Bengali/English baseline. Scoring suggestions use exact rubric hints and source spans. Handwritten Bangla accuracy and reviewer time require a consented, writer-disjoint evaluation. Run `python scripts/evaluate.py test-cases.jsonl` on approved data. Each case has `writer`, `split`, `reference_transcription`, `ocr_transcription` and `abstained`. Optional fields include `reference_fields`, `ocr_fields`, `reference_evidence`, `linked_evidence`, `review_corrected`, `review_seconds` and `manual_seconds`.
+### Bangla OCR evaluation
+
+The local worker transcribes the source using Tesseract’s Bengali script model. It renders PDF pages for OCR at up to 180 DPI within the image size limit. The recognition profile excludes the Assamese letters `ৰ` and `ৱ` for this Bangla workflow. The draft preserves English terms that appear in the source. Markers compare the draft with the original and save a verified transcription separately.
+
+On a five-page Bangla demo PDF, the worker extracted text from all five pages. Pages 1 and 5 were scored against direct visual transcriptions using character error rate after NFC and whitespace normalization. Punctuation and Latin substitutions count as errors.
+
+| Reference pages | Previous `ben+eng` pipeline | Bengali script pipeline |
+| --- | ---: | ---: |
+| Page 1 | 14.55% | 6.55% |
+| Page 5 | 20.01% | 11.26% |
+| Combined, 2,592 reference characters | 17.82% | 9.38% |
+
+These results describe this one demo PDF. Handwritten Bangla accuracy and reviewer time require a consented, writer-disjoint evaluation. Run `python scripts/evaluate.py test-cases.jsonl` on approved data. Each case has `writer`, `split`, `reference_transcription`, `ocr_transcription` and `abstained`. Optional fields include `reference_fields`, `ocr_fields`, `reference_evidence`, `linked_evidence`, `review_corrected`, `review_seconds` and `manual_seconds`.
 
 The acceptance run passed 40 Maven tests and completed the Chromium workflow on desktop and mobile with the standalone document worker. A synthetic encrypted backup restored the original checksum, approved revision, role permissions and trust registry in approximately five seconds.
 

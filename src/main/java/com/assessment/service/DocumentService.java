@@ -6,6 +6,7 @@ import java.nio.file.*;
 import java.util.Map;
 import javax.imageio.ImageIO;
 import org.apache.pdfbox.Loader;
+import org.apache.pdfbox.rendering.ImageType;
 import org.apache.pdfbox.rendering.PDFRenderer;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -115,20 +116,34 @@ public class DocumentService {
     String recognize(Map<String, Object> script, Map<String, Object> region, String command, long deadline)
         throws IOException, InterruptedException {
         int page = ((Number) region.get("page")).intValue();
-        if (worker == null) return NativeOcr.read(command, crop(page(script, page), region), deadline);
+        if (worker == null) {
+            var image = localPage(original(script), script.get("mime").toString(), page, true);
+            return NativeOcr.read(command, crop(image, region), deadline);
+        }
         long remaining = java.util.concurrent.TimeUnit.NANOSECONDS.toSeconds(deadline - System.nanoTime());
         byte[] text = worker.call("ocr", original(script), script.get("mime").toString(), page, region, Math.max(1, Math.min(50, remaining)));
         return new String(text, java.nio.charset.StandardCharsets.UTF_8);
     }
 
     static BufferedImage localPage(byte[] bytes, String mime, int page) throws IOException {
+        return localPage(bytes, mime, page, false);
+    }
+
+    static BufferedImage localPage(byte[] bytes, String mime, int page, boolean forOcr) throws IOException {
         if (page < 1 || page > MAX_PAGES) throw bad("Invalid page number");
         if ("application/pdf".equals(mime)) {
             try (var pdf = Loader.loadPDF(bytes)) {
                 if (page > pdf.getNumberOfPages()) throw bad("Page is outside this document");
-                validatePage(pdf.getPage(page - 1));
+                var source = pdf.getPage(page - 1);
+                validatePage(source);
                 var renderer = new PDFRenderer(pdf);
-                renderer.setSubsamplingAllowed(true);
+                renderer.setSubsamplingAllowed(!forOcr);
+                if (forOcr) {
+                    var box = source.getCropBox();
+                    double pixelsAt72Dpi = (double) box.getWidth() * box.getHeight();
+                    int dpi = Math.min(180, (int) (72 * Math.sqrt(MAX_PIXELS / pixelsAt72Dpi)));
+                    return renderer.renderImageWithDPI(page - 1, dpi, ImageType.GRAY);
+                }
                 return renderer.renderImageWithDPI(page - 1, 144);
             }
         }

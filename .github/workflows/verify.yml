@@ -15,7 +15,7 @@ jobs:
           node-version: '22'
       - run: node --check src/main/resources/static/js/app.js
       - run: node scripts/frontend-smoke.cjs
-      - run: sudo apt-get update && sudo apt-get install -y tesseract-ocr tesseract-ocr-ben tesseract-ocr-eng
+      - run: sudo apt-get update && sudo apt-get install -y tesseract-ocr tesseract-ocr-script-beng fonts-noto-core
       - name: Start disposable MongoDB replica set
         run: |
           docker run -d --name assessment-test-mongo -p 127.0.0.1:27133:27133 mongo:8.0 \

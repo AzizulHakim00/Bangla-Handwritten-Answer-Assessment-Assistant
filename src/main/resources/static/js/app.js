@@ -5,7 +5,7 @@ const icon=(n,cls='')=>`<svg class="icon ${cls}" viewBox="0 0 24 24" fill="none"
 const logo=`<svg class="logo" viewBox="0 0 60 52" aria-hidden="true"><path fill="currentColor" d="M1 15 30 4l29 11-29 11Z"/><path d="M9 22v18c9-1 15 2 21 7 6-5 12-8 21-7V22M4 18v15" fill="none" stroke="currentColor" stroke-width="4"/><path d="m17 26 13 5 13-5v9c-5 0-9 2-13 5-4-3-8-5-13-5Z" fill="currentColor"/></svg>`;
 let state={exams:[],scripts:[],criteria:[],version:0};
 const routeParams=new URLSearchParams(location.search);
-const release='2026.11.27-r4';
+const release='2026.11.27-r4.1';
 const authenticatorEnabled=document.querySelector('meta[name=authenticator-enabled]')?.content==='true';
 const localDemoEnabled=document.querySelector('meta[name=local-demo-enabled]')?.content==='true';
 const knownPageCounts=new Map();
@@ -524,7 +524,7 @@ function assessmentJobPanel(parent){
   const job=jobFor(parent);
   const labels={PENDING:'Queued',RUNNING:'Processing',NEEDS_REVIEW:'Ready to verify',MANUAL_REVIEW:'Needs manual review',STALE:'Outdated',FAILED:'Failed'};
   return job?`<div class="notice assessment-progress" role="status"><p>${esc(labels[job.state]||job.state)} · ${job.progress}%</p>
-    ${job.state==='MANUAL_REVIEW'?'<p>Check Script OCR for available page text and review any unmatched answers.</p>':job.state==='STALE'?'<p>The script changed during assessment. Start a new run.</p>':''}
+    ${job.state==='MANUAL_REVIEW'?'<p>Check Script OCR for available page text and review any unmatched answers.</p>':job.state==='STALE'?'<p>This assessment is out of date. Run Auto OCR &amp; Assess again.</p>':''}
     ${btn('Refresh Job','refresh-job','',true)}</div>`:'';
 }
 async function refreshJob(onlyChanges=false){

@@ -68,6 +68,35 @@ class DocumentToolsTest {
     }
 
     @Test @org.junit.jupiter.api.condition.EnabledIfEnvironmentVariable(named="OCR_NATIVE_TEST", matches="true")
+    void bengaliOcrRetainsBengaliTextAndAnEnglishTerm() throws Exception {
+        var image = new BufferedImage(950, 230, BufferedImage.TYPE_INT_RGB);
+        var graphics = image.createGraphics();
+        String bengali = "বাংলা দ্বিতীয় পত্র";
+        try {
+            graphics.setColor(Color.WHITE);
+            graphics.fillRect(0, 0, image.getWidth(), image.getHeight());
+            graphics.setColor(Color.BLACK);
+            var font = new Font("Noto Sans Bengali", Font.PLAIN, 48);
+            assertEquals(-1, font.canDisplayUpTo(bengali), "Install Noto Sans Bengali for the OCR test");
+            graphics.setFont(font);
+            graphics.drawString(bengali, 55, 90);
+            graphics.setFont(new Font("SansSerif", Font.PLAIN, 48));
+            graphics.drawString("Photosynthesis", 55, 175);
+        } finally {
+            graphics.dispose();
+        }
+        ImageIO.write(image, "png", temp.resolve("SCR-bengali").toFile());
+        var script = Map.<String, Object>of("id", "SCR-bengali", "mime", "image/png");
+        var wholePage = Map.<String, Object>of("page", 1, "x", 0, "y", 0, "width", 1, "height", 1);
+        var worker = new OcrWorker(mock(WorkspaceService.class), new DocumentService(temp.toString()), "tesseract");
+        var result = worker.recognize(script, java.util.List.of(wholePage));
+        var text = java.text.Normalizer.normalize(result.get("candidate").toString(), java.text.Normalizer.Form.NFC);
+        assertTrue(text.contains(java.text.Normalizer.normalize(bengali, java.text.Normalizer.Form.NFC)), text);
+        assertTrue(text.contains("Photosynthesis"), text);
+        assertEquals("NEEDS_REVIEW", result.get("status"));
+    }
+
+    @Test @org.junit.jupiter.api.condition.EnabledIfEnvironmentVariable(named="OCR_NATIVE_TEST", matches="true")
     @SuppressWarnings("unchecked") void installedEngineProducesOnlyAnUnverifiedCandidate() throws Exception {
         var documents=new DocumentService(temp.toString());var image=new BufferedImage(800,140,BufferedImage.TYPE_INT_RGB);
         var g=image.createGraphics();g.setColor(Color.WHITE);g.fillRect(0,0,800,140);g.setColor(Color.BLACK);

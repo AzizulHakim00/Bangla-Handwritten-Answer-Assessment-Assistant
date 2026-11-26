@@ -7,6 +7,8 @@ import java.util.*;
 import org.springframework.core.env.Environment;
 
 public class InstitutionAccounts {
+    static final List<String> ROLES = List.of("TEACHER", "MARKER", "MODERATOR");
+
     public record Member(String email, String tenant, String role, boolean active, String passwordHash) {}
 
     private final List<Member> members;
@@ -19,7 +21,7 @@ public class InstitutionAccounts {
             var encoder = new org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder();
             var local = new ArrayList<Member>();
             var passwords = new HashSet<String>();
-            for (String role : List.of("TEACHER", "MARKER", "MODERATOR")) {
+            for (String role : ROLES) {
                 String password = env.getProperty(role + "_PASSWORD");
                 if (password == null || password.length() < 12 || password.getBytes(java.nio.charset.StandardCharsets.UTF_8).length > 72)
                     throw new IllegalStateException("Set " + role + "_PASSWORD to at least 12 characters");
@@ -32,7 +34,7 @@ public class InstitutionAccounts {
         for (var member : members) {
             if (member.email() == null || !member.email().matches("[a-z0-9._%+\\-]+@[a-z0-9.\\-]+")
                 || member.tenant() == null || !member.tenant().matches("[a-z0-9][a-z0-9-]{0,62}")
-                || !List.of("TEACHER", "MARKER", "MODERATOR").contains(member.role())
+                || !ROLES.contains(member.role())
                 || member.passwordHash() == null || !member.passwordHash().matches("\\$2[aby]\\$[0-9]{2}\\$[./A-Za-z0-9]{53}")
                 || !emails.add(member.email())) {
                 throw new IllegalStateException("Invalid or duplicate institutional account");

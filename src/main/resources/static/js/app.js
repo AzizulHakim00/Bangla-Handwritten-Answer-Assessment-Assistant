@@ -5,8 +5,9 @@ const icon=(n,cls='')=>`<svg class="icon ${cls}" viewBox="0 0 24 24" fill="none"
 const logo=`<svg class="logo" viewBox="0 0 60 52" aria-hidden="true"><path fill="currentColor" d="M1 15 30 4l29 11-29 11Z"/><path d="M9 22v18c9-1 15 2 21 7 6-5 12-8 21-7V22M4 18v15" fill="none" stroke="currentColor" stroke-width="4"/><path d="m17 26 13 5 13-5v9c-5 0-9 2-13 5-4-3-8-5-13-5Z" fill="currentColor"/></svg>`;
 let state={exams:[],scripts:[],criteria:[],version:0};
 const routeParams=new URLSearchParams(location.search);
-const release='2026.11.26-r3.2';
+const release='2026.11.26-r3.3';
 const authenticatorEnabled=document.querySelector('meta[name=authenticator-enabled]')?.content==='true';
+const localDemoEnabled=document.querySelector('meta[name=local-demo-enabled]')?.content==='true';
 const knownPageCounts=new Map();
 const pageCount=record=>record.pages||knownPageCounts.get(record.id)||(record.mime==='application/pdf'?500:1);
 const canRebind=record=>record.status==='To Review'&&!(record.answers||[record]).some(item=>
@@ -277,11 +278,15 @@ function login(){
       <div class="books"><div></div><div></div><div></div></div><span class="plant">☘</span>
     </div>
     <section class="login-card">
-      <h1>Sign In</h1>
-      <p>Access your academic assessment account</p>
+      <h1>${localDemoEnabled ? 'Demo Sign In' : 'Sign In'}</h1>
+      <p>${localDemoEnabled ? 'Choose a role to open the test workspace.' : 'Access your academic assessment account'}</p>
       <form id="login-form" action="/login" method="post">
         <input type="hidden" name="_csrf" value="${esc(document.querySelector('meta[name=csrf-token]')?.content||'')}">
-        <label for="login-email">Email address</label>
+        ${localDemoEnabled ? `<div class="login-demo-roles">
+          <button class="button" type="submit" name="demoRole" value="TEACHER">Demo Teacher ${icon('arrow')}</button>
+          <button class="button" type="submit" name="demoRole" value="MARKER">Demo Marker ${icon('arrow')}</button>
+          <button class="button" type="submit" name="demoRole" value="MODERATOR">Demo Moderator ${icon('arrow')}</button>
+        </div>` : `<label for="login-email">Email address</label>
         <div class="input-icon">
           ${icon('mail')}
           <input id="login-email" name="username" type="email" autocomplete="username" autocapitalize="none" spellcheck="false" required>
@@ -294,10 +299,10 @@ function login(){
         </div>
         ${authenticatorEnabled ? `<label for="login-otp">Authenticator code (if assigned)</label>
         <input id="login-otp" name="otp" autocomplete="one-time-code" inputmode="numeric" pattern="[0-9]{6}" maxlength="6">` : ''}
-        <button class="button" type="submit">Sign In ${icon('arrow')}</button>
+        <button class="button" type="submit">Sign In ${icon('arrow')}</button>`}
       </form>
-      <button class="text-button" data-action="forgot">Forgot password?</button>
-      <p class="small muted">Use your school account to sign in. · Build ${release}</p>
+      ${localDemoEnabled ? '' : '<button class="text-button" data-action="forgot">Forgot password?</button>'}
+      <p class="small muted">${localDemoEnabled ? 'Local demo' : 'Use your school account to sign in.'} · Build ${release}</p>
     </section>
   </div>`;
 }
@@ -629,7 +634,8 @@ document.addEventListener('submit',async event=>{
 if(location.pathname==='/login'){
   render();
   if(location.search.includes('error')){
-    toast(authenticatorEnabled ? 'Check your sign-in details and any required authenticator code.' : 'Check your email address and password.');
+    const message = authenticatorEnabled ? 'Check your sign-in details and any required authenticator code.' : 'Check your email address and password.';
+    toast(localDemoEnabled ? 'Demo sign-in failed. Reload the page and try again.' : message);
   }
 }else refresh().then(()=>{
   if(location.pathname==='/review')loadLegacyPageCount().catch(error=>toast(error.message));

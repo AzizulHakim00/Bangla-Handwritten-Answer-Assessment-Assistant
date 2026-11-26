@@ -10,9 +10,11 @@ import org.springframework.test.context.TestPropertySource;
 import org.springframework.test.web.servlet.MockMvc;
 import static org.hamcrest.Matchers.containsString;
 import static org.hamcrest.Matchers.not;
+import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.csrf;
 import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestBuilders.formLogin;
 import static org.springframework.security.test.web.servlet.response.SecurityMockMvcResultMatchers.*;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.*;
 
 @WebMvcTest(PageController.class)
@@ -31,21 +33,27 @@ class LoginTest {
     }
     @Test void anonymousUserGetsCustomLoginPage() throws Exception {
         mvc.perform(get("/login")).andExpect(status().isOk()).andExpect(view().name("app"))
-            .andExpect(content().string(not(containsString("name=\"authenticator-enabled\""))));
+            .andExpect(content().string(not(containsString("name=\"authenticator-enabled\""))))
+            .andExpect(content().string(not(containsString("name=\"local-demo-enabled\""))));
+        mvc.perform(post("/login").param("demoRole", "TEACHER").with(csrf()))
+            .andExpect(status().isNotFound()).andExpect(unauthenticated());
     }
 }
 
 @WebMvcTest(PageController.class)
 @Import(SecurityConfig.class)
 @TestPropertySource(properties={"TEACHER_PASSWORD=teacher-test-password","MARKER_PASSWORD=marker-test-password",
-    "MODERATOR_PASSWORD=moderator-test-password",
+    "MODERATOR_PASSWORD=moderator-test-password", "ASSESSMENT_LOCAL_DEMO=true",
     "ASSESSMENT_MFA_SECRETS_JSON={\"teacher@school.local\":\"MTIzNDU2Nzg5MDEyMzQ1Njc4OTA=\"}"})
 class AuthenticatorLoginTest {
     @Autowired MockMvc mvc;
 
     @Test void configuredAuthenticatorIsVisibleAndEnforced() throws Exception {
         mvc.perform(get("/login")).andExpect(status().isOk())
-            .andExpect(content().string(containsString("<meta name=\"authenticator-enabled\" content=\"true\">")));
+            .andExpect(content().string(containsString("<meta name=\"authenticator-enabled\" content=\"true\">")))
+            .andExpect(content().string(not(containsString("name=\"local-demo-enabled\""))));
+        mvc.perform(post("/login").param("demoRole", "TEACHER").with(csrf()))
+            .andExpect(status().isNotFound()).andExpect(unauthenticated());
         mvc.perform(formLogin("/login").user("teacher@school.local").password("teacher-test-password"))
             .andExpect(unauthenticated()).andExpect(redirectedUrl("/login?error"));
     }

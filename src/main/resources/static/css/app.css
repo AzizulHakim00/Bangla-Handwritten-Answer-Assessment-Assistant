@@ -52,3 +52,6 @@
 }
 .login-card .input-icon input:focus{outline:none;box-shadow:none}
 .login-card .input-icon button:focus-visible{outline-offset:0}
+
+.login-demo-roles{display:grid;gap:12px}
+.login-demo-roles .button{width:100%;justify-content:center}

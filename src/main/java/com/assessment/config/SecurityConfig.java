@@ -36,6 +36,10 @@ public class SecurityConfig {
         return new PilotMfa(env, accounts);
     }
 
+    @Bean LocalDemoLogin localDemoLogin(Environment env, PilotMfa mfa) {
+        return new LocalDemoLogin(env, mfa);
+    }
+
     @Bean DaoAuthenticationProvider institutionalLogin(UserDetailsService users, BCryptPasswordEncoder encoder, PilotMfa mfa) {
         var provider = new DaoAuthenticationProvider(users) {
             @Override
@@ -52,8 +56,12 @@ public class SecurityConfig {
         return provider;
     }
 
-    @Bean SecurityFilterChain security(HttpSecurity http, DaoAuthenticationProvider institutionalLogin) throws Exception {
-        return http.authenticationProvider(institutionalLogin).addFilterBefore(new LoginThrottle(), UsernamePasswordAuthenticationFilter.class).authorizeHttpRequests(a -> a
+    @Bean SecurityFilterChain security(HttpSecurity http, DaoAuthenticationProvider institutionalLogin,
+        LocalDemoLogin localDemoLogin) throws Exception {
+        return http.authenticationProvider(institutionalLogin)
+            .addFilterBefore(new LoginThrottle(), UsernamePasswordAuthenticationFilter.class)
+            .addFilterBefore(localDemoLogin.roleLoginFilter(), UsernamePasswordAuthenticationFilter.class)
+            .authorizeHttpRequests(a -> a
             .requestMatchers("/login", "/css/**", "/js/**", "/error").permitAll()
             .requestMatchers(org.springframework.http.HttpMethod.POST, "/api/exams", "/api/exams/*", "/api/rubrics", "/api/uploads", "/api/scripts/*/assignment", "/api/scripts/*/binding").hasRole("TEACHER")
             .requestMatchers(org.springframework.http.HttpMethod.POST, "/api/scripts/*/approve", "/api/scripts/*/return", "/api/scripts/*/appeals/resolve").hasRole("MODERATOR")

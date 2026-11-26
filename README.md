@@ -19,6 +19,8 @@ Before starting Compose, set three distinct passwords with at least 12 character
 | `marker@school.local` | Segment assigned answers, request OCR, verify text, score and submit |
 | `moderator@school.local` | Review assigned submissions, return or approve them, resolve appeals and export approved marks |
 
+For local testing with sample scripts, set `ASSESSMENT_LOCAL_DEMO=true` in your local `.env` and recreate the app with `docker compose up -d --build app`. At [http://127.0.0.1:8085/login](http://127.0.0.1:8085/login), choose **Demo Teacher**, **Demo Marker**, or **Demo Moderator** to open that role directly. Every person with access to the local demo can act as any of the three roles. The app disables these buttons for institutional accounts, authenticator setups, and proxied HTTPS sign-in.
+
 Compose starts a MongoDB replica set and an isolated PDFBox/Tesseract worker. The application is bound to localhost. MongoDB and the worker have no published host ports. MongoDB uses a named volume. Originals, encryption keys and the signing registry use the private scripts volume. The browser views rendered pages and can download the original after an authorization check.
 
 For Java development, install Java 21, Maven, MongoDB and Tesseract with `ben` and `eng` data. Configure the three role passwords and run `mvn spring-boot:run`. Spring Boot listens on port 8080 by default. Set `MONGODB_URI` for your database. Enable `ASSESSMENT_PARTITIONED=true` with a replica set to use the Compose storage layout, or run against a separate standalone development database using the aggregate layout. An existing partitioned database requires replica-set mode.
@@ -34,7 +36,7 @@ git pull --ff-only origin main
 powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\update-local.ps1
 ```
 
-The updater keeps existing passwords, generates a missing worker token, builds both images, and adjusts the old scripts volume's file ownership. Open [http://localhost:8085/login](http://localhost:8085/login) and confirm **Build 2026.11.26-r3.2**. The Scripts table shows the actual exam, rubric revision, and available actions. Use **Change Exam / Rubric** to correct an existing upload while it is still **To Review**. Teachers configure exams and rubrics, and the assigned marker runs OCR and assessment.
+The updater keeps existing passwords, generates a missing worker token, builds both images, and adjusts the old scripts volume's file ownership. Open [http://localhost:8085/login](http://localhost:8085/login) and confirm **Build 2026.11.26-r3.3**. The Scripts table shows the actual exam, rubric revision, and available actions. Use **Change Exam / Rubric** to correct an existing upload while it is still **To Review**. Teachers configure exams and rubrics, and the assigned marker runs OCR and assessment.
 
 ## Complete an assessment
 
